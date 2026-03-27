@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchQuotes, YFQuote } from "@/lib/yahoo";
 import { FUNDS, MARKET_INDICES } from "@/lib/constants";
 import {
   FundConfig,
@@ -9,68 +10,7 @@ import {
   FundData,
 } from "@/lib/types";
 
-// ── FMP (for holdings + indices only) ────────────────────────────────────
-
-const FMP_BASE = "https://financialmodelingprep.com/api/v3";
-const FMP_KEY = process.env.FMP_API_KEY;
-
-interface FmpQuote {
-  symbol: string;
-  name: string;
-  price: number;
-  changesPercentage: number;
-  change: number;
-  dayLow: number;
-  dayHigh: number;
-  open: number;
-  previousClose: number;
-  volume: number;
-  marketCap?: number;
-  exchange?: string;
-}
-
-async function fmpBatchQuotes(
-  tickers: string[]
-): Promise<Map<string, FmpQuote>> {
-  if (!tickers.length) return new Map();
-  try {
-    const res = await fetch(
-      `${FMP_BASE}/quote/${tickers.join(",")}?apikey=${FMP_KEY}`,
-      { next: { revalidate: 300 } }
-    );
-    if (!res.ok) throw new Error(`FMP ${res.status}`);
-    const data: FmpQuote[] = await res.json();
-    if (!Array.isArray(data)) return new Map();
-    return new Map(data.map((q) => [q.symbol, q]));
-  } catch (err) {
-    console.error("FMP batch quotes error:", err);
-    return new Map();
-  }
-}
-
-// ── BlackRock product data (for both funds) ───────────────────────────────
-//
-// BlackRock's cache API serves performance chart data for all products at:
-//   https://www.blackrock.com/cache/api/1/public/products/{id}/performanceChart.json
-//
-// This works for both US ETFs (BPAY, product 329128) and UCITS funds
-// (BGF World Financials, product 229936). The response contains a time-series
-// of daily NAV values which we use for both the current quote and history.
-
-interface BlackRockSeries {
-  name?: string;
-  id?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any[];
-}
-
-interface BlackRockChartResponse {
-  data?: {
-    series?: BlackRockSeries[];
-    currency?: string;
-    fundName?: string;
-  };
-}
+// ── BlackRock NAV (unchanged — Yahoo doesn't carry UCITS/active ETF NAVs) ──
 
 interface BlackRockProductData {
   quote: FundQuote | null;
@@ -81,9 +21,6 @@ async function fetchBlackRockProductData(
   fund: FundConfig
 ): Promise<BlackRockProductData> {
   const { blackrockProductId, blackrockRegion, name, ticker, currency } = fund;
-
-  // The cache API endpoint is the same regardless of region; only the
-  // Referer header differs (used by BlackRock for routing/analytics).
   const refererBase =
     blackrockRegion === "us"
       ? "https://www.blackrock.com/us/individual/products"
@@ -94,7 +31,8 @@ async function fetchBlackRockProductData(
     const res = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         Accept: "application/json, text/plain, */*",
         "Accept-Language": "en-GB,en;q=0.9",
         Referer: `${refererBase}/${blackrockProductId}/`,
@@ -102,19 +40,17 @@ async function fetchBlackRockProductData(
       },
       next: { revalidate: 3600 },
     });
-
     if (!res.ok) throw new Error(`BlackRock performanceChart ${res.status}`);
 
-    const json: BlackRockChartResponse = await res.json();
-    const series = json?.data?.series;
-    if (!Array.isArray(series) || !series.length) {
-      throw new Error("No series data in BlackRock response");
-    }
+    const json = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const series: any[] = json?.data?.series ?? [];
+    if (!series.length) throw new Error("No series in BlackRock response");
 
-    // Prefer the series whose name/id contains "nav", otherwise use first
     const navSeries =
       series.find(
-        (s) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (s: any) =>
           s.name?.toLowerCase().includes("nav") ||
           s.id?.toLowerCase().includes("nav")
       ) ?? series[0];
@@ -122,43 +58,35 @@ async function fetchBlackRockProductData(
     const raw: [number, number][] = navSeries?.data ?? [];
     if (!raw.length) throw new Error("Empty data series");
 
-    // Build 90-day history (oldest → newest)
     const history: HistoricalPoint[] = raw.slice(-90).map(([ts, val]) => ({
       date: new Date(ts).toISOString().split("T")[0],
       close: typeof val === "number" ? val : 0,
     }));
 
-    // Derive current + previous NAV for the quote
-    const latest = raw[raw.length - 1];
-    const prev = raw[raw.length - 2];
-    const nav: number = latest?.[1] ?? 0;
-    const prevNav: number = prev?.[1] ?? nav;
-    const navChange = nav - prevNav;
-    const navChangePct = prevNav ? (navChange / prevNav) * 100 : 0;
+    const latest  = raw[raw.length - 1];
+    const prev    = raw[raw.length - 2];
+    const nav     = latest?.[1] ?? 0;
+    const prevNav = prev?.[1] ?? nav;
     const navDate = new Date(latest?.[0]).toISOString().split("T")[0];
-    const responseCurrency: string =
-      json?.data?.currency || currency || "USD";
 
-    const quote: FundQuote = {
-      ticker,
-      name: json?.data?.fundName || name,
-      price: nav,
-      change: navChange,
-      changePercent: navChangePct,
-      previousClose: prevNav,
-      open: prevNav,
-      dayHigh: nav,
-      dayLow: nav,
-      volume: 0,
-      currency: responseCurrency,
-      exchange:
-        fund.isin
-          ? `NAV · ${navDate}`
-          : `NYSE Arca · NAV ${navDate}`,
-      navDate,
+    return {
+      quote: {
+        ticker,
+        name: json?.data?.fundName || name,
+        price: nav,
+        change: nav - prevNav,
+        changePercent: prevNav ? ((nav - prevNav) / prevNav) * 100 : 0,
+        previousClose: prevNav,
+        open: prevNav,
+        dayHigh: nav,
+        dayLow: nav,
+        volume: 0,
+        currency: json?.data?.currency || currency || "USD",
+        exchange: fund.isin ? `NAV · ${navDate}` : `NYSE Arca · NAV ${navDate}`,
+        navDate,
+      },
+      history,
     };
-
-    return { quote, history };
   } catch (err) {
     console.error(`BlackRock data error for ${name}:`, err);
     return { quote: null, history: [] };
@@ -167,42 +95,35 @@ async function fetchBlackRockProductData(
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-function fmpToHolding(
+function yfToHolding(
   ticker: string,
   name: string,
   weight: number | undefined,
-  quotes: Map<string, FmpQuote>
+  quotes: Map<string, YFQuote>
 ): HoldingQuote {
   const q = quotes.get(ticker);
-  if (!q) {
+  if (!q || !q.regularMarketPrice) {
     return {
-      ticker,
-      name,
-      price: 0,
-      change: 0,
-      changePercent: 0,
-      previousClose: 0,
-      open: 0,
-      dayHigh: 0,
-      dayLow: 0,
-      volume: 0,
-      currency: "USD",
-      fundWeight: weight,
+      ticker, name, price: 0, change: 0, changePercent: 0,
+      previousClose: 0, open: 0, dayHigh: 0, dayLow: 0,
+      volume: 0, currency: "USD", fundWeight: weight,
       error: "Data unavailable",
     };
   }
   return {
     ticker,
-    name: q.name || name,
-    price: q.price,
-    change: q.change,
-    changePercent: q.changesPercentage,
-    previousClose: q.previousClose,
-    open: q.open,
-    dayHigh: q.dayHigh,
-    dayLow: q.dayLow,
-    volume: q.volume,
-    currency: "USD",
+    name: q.longName || q.shortName || name,
+    price: q.regularMarketPrice,
+    change: q.regularMarketChange ?? 0,
+    changePercent: q.regularMarketChangePercent ?? 0,
+    previousClose: q.regularMarketPreviousClose ?? 0,
+    open: q.regularMarketOpen ?? 0,
+    dayHigh: q.regularMarketDayHigh ?? 0,
+    dayLow: q.regularMarketDayLow ?? 0,
+    volume: q.regularMarketVolume ?? 0,
+    marketCap: q.marketCap,
+    currency: q.currency ?? "USD",
+    exchange: q.fullExchangeName,
     fundWeight: weight,
   };
 }
@@ -216,60 +137,46 @@ export async function GET() {
     ];
     const indexTickers = MARKET_INDICES.map((i) => i.ticker);
 
-    // Fire all requests in parallel
+    // One Yahoo batch quote call + one BlackRock call per fund — all parallel
     const [quotesResult, ...fundResults] = await Promise.allSettled([
-      // One FMP batch call covers all holdings + all indices
-      fmpBatchQuotes([...holdingTickers, ...indexTickers]),
-      // One BlackRock call per fund
+      fetchQuotes([...holdingTickers, ...indexTickers]),
       ...FUNDS.map((f) => fetchBlackRockProductData(f)),
     ]);
 
-    const fmpQuotes: Map<string, FmpQuote> =
+    const quotes: Map<string, YFQuote> =
       quotesResult.status === "fulfilled" ? quotesResult.value : new Map();
 
-    // Build fund data
     const fundsData: FundData[] = FUNDS.map((fund, i) => {
-      const result =
+      const br =
         fundResults[i].status === "fulfilled"
-          ? (fundResults[i] as PromiseFulfilledResult<BlackRockProductData>)
-              .value
+          ? (fundResults[i] as PromiseFulfilledResult<BlackRockProductData>).value
           : ({ quote: null, history: [] } as BlackRockProductData);
-
-      const holdings: HoldingQuote[] = fund.holdings.map((h) =>
-        fmpToHolding(h.ticker, h.name, h.weight, fmpQuotes)
-      );
 
       return {
         fund,
-        quote: result.quote,
-        history: result.history,
-        holdings,
+        quote: br.quote,
+        history: br.history,
+        holdings: fund.holdings.map((h) =>
+          yfToHolding(h.ticker, h.name, h.weight, quotes)
+        ),
       };
     });
 
-    // Build indices from the same FMP batch
     const indices: MarketIndex[] = MARKET_INDICES.map((idx) => {
-      const q = fmpQuotes.get(idx.ticker);
+      const q = quotes.get(idx.ticker);
       return {
         ticker: idx.ticker,
         name: idx.name,
-        price: q?.price ?? 0,
-        change: q?.change ?? 0,
-        changePercent: q?.changesPercentage ?? 0,
-        currency: "USD",
+        price: q?.regularMarketPrice ?? 0,
+        change: q?.regularMarketChange ?? 0,
+        changePercent: q?.regularMarketChangePercent ?? 0,
+        currency: q?.currency ?? "USD",
       };
     });
 
-    return NextResponse.json({
-      funds: fundsData,
-      indices,
-      lastUpdated: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("Fund data fetch error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch fund data" },
-      { status: 500 }
-    );
+    return NextResponse.json({ funds: fundsData, indices, lastUpdated: new Date().toISOString() });
+  } catch (err) {
+    console.error("Fund data fetch error:", err);
+    return NextResponse.json({ error: "Failed to fetch fund data" }, { status: 500 });
   }
 }

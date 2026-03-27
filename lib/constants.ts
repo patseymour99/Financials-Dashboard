@@ -55,13 +55,21 @@ export const FUNDS: FundConfig[] = [
   },
 ];
 
+// Yahoo Finance ticker formats:
+//   forex  → "EURUSD=X"   (=X suffix required)
+//   crypto → "BTC-USD"    (hyphen, not no separator)
+//   futures→ "CL=F"       (=F suffix)
+//   index  → "^GSPC" etc. (caret prefix)
 export const MARKET_INDICES = [
-  { ticker: "^GSPC", name: "S&P 500" },
-  { ticker: "^DJI", name: "Dow Jones" },
-  { ticker: "^IXIC", name: "Nasdaq" },
-  { ticker: "^VIX", name: "VIX" },
-  { ticker: "^FTSE", name: "FTSE 100" },
-  { ticker: "EURUSD", name: "EUR/USD" },
+  { ticker: "^GSPC",     name: "S&P 500"   },
+  { ticker: "^DJI",      name: "Dow Jones"  },
+  { ticker: "^IXIC",     name: "Nasdaq"     },
+  { ticker: "^FTSE",     name: "FTSE 100"   },
+  { ticker: "^TNX",      name: "10Y Yield"  },
+  { ticker: "BTC-USD",   name: "Bitcoin"    },
+  { ticker: "GC=F",      name: "Gold"       },
+  { ticker: "EURUSD=X",  name: "EUR/USD"    },
+  { ticker: "^VIX",      name: "VIX"        },
 ];
 
 export const NEWS_QUERIES = {
