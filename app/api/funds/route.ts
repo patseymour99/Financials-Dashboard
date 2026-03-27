@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import yahooFinance from "yahoo-finance2";
 import { FUNDS, MARKET_INDICES } from "@/lib/constants";
 import {
   FundQuote,
@@ -9,83 +8,218 @@ import {
   FundData,
 } from "@/lib/types";
 
-async function getQuote(ticker: string): Promise<FundQuote | null> {
+const FMP_BASE = "https://financialmodelingprep.com/api/v3";
+const API_KEY = process.env.FMP_API_KEY;
+
+// ── FMP response shapes ──────────────────────────────────────────────────
+
+interface FmpQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  changesPercentage: number;
+  change: number;
+  dayLow: number;
+  dayHigh: number;
+  open: number;
+  previousClose: number;
+  volume: number;
+  marketCap?: number;
+  exchange?: string;
+}
+
+interface FmpHistoricalDay {
+  date: string;
+  close: number;
+}
+
+// ── FMP fetchers ─────────────────────────────────────────────────────────
+
+async function fmpBatchQuotes(
+  tickers: string[]
+): Promise<Map<string, FmpQuote>> {
+  if (!tickers.length) return new Map();
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (await yahooFinance.quote(ticker)) as any;
-    if (!result) return null;
+    const res = await fetch(
+      `${FMP_BASE}/quote/${tickers.join(",")}?apikey=${API_KEY}`,
+      { next: { revalidate: 300 } }
+    );
+    if (!res.ok) throw new Error(`FMP ${res.status}`);
+    const data: FmpQuote[] = await res.json();
+    return new Map(data.map((q) => [q.symbol, q]));
+  } catch (err) {
+    console.error("FMP batch quotes error:", err);
+    return new Map();
+  }
+}
+
+async function fmpHistory(ticker: string): Promise<HistoricalPoint[]> {
+  try {
+    const res = await fetch(
+      `${FMP_BASE}/historical-price-full/${ticker}?timeseries=90&apikey=${API_KEY}`,
+      { next: { revalidate: 3600 } }
+    );
+    if (!res.ok) return [];
+    const data: { historical?: FmpHistoricalDay[] } = await res.json();
+    return (data.historical || [])
+      .slice()
+      .reverse()
+      .map((d) => ({ date: d.date, close: d.close }));
+  } catch {
+    return [];
+  }
+}
+
+// ── BlackRock NAV for UCITS funds ────────────────────────────────────────
+// BlackRock exposes fund data via their product performance API.
+// We try two endpoints; both are used by the public BlackRock website.
+
+interface BlackRockNav {
+  navDate: string;
+  nav: number;
+  navChange: number;
+  navChangePercent: number;
+  currency: string;
+  fundName: string;
+}
+
+async function fetchBlackRockProductNav(
+  productUrl: string
+): Promise<BlackRockNav | null> {
+  try {
+    const res = await fetch(
+      `https://www.blackrock.com/cache/api/1/public/products/${productUrl}/performanceChart.json`,
+      {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; dashboard/1.0)" },
+        next: { revalidate: 3600 },
+      }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const series = json?.data?.series?.[0]?.data;
+    if (!series?.length) return null;
+    const latest = series[series.length - 1];
+    const prev = series[series.length - 2];
+    const nav: number = latest?.[1] ?? 0;
+    const prevNav: number = prev?.[1] ?? nav;
     return {
-      ticker,
-      name: result.longName || result.shortName || ticker,
-      price: result.regularMarketPrice ?? 0,
-      change: result.regularMarketChange ?? 0,
-      changePercent: result.regularMarketChangePercent ?? 0,
-      previousClose: result.regularMarketPreviousClose ?? 0,
-      open: result.regularMarketOpen ?? 0,
-      dayHigh: result.regularMarketDayHigh ?? 0,
-      dayLow: result.regularMarketDayLow ?? 0,
-      volume: result.regularMarketVolume ?? 0,
-      marketCap: result.marketCap,
-      currency: result.currency || "USD",
-      exchange: result.fullExchangeName,
-      ytdReturn: result.ytdReturn,
-      expenseRatio: result.annualReportExpenseRatio,
+      navDate: new Date(latest?.[0]).toISOString().split("T")[0],
+      nav,
+      navChange: nav - prevNav,
+      navChangePercent: prevNav ? ((nav - prevNav) / prevNav) * 100 : 0,
+      currency: "USD",
+      fundName: "",
     };
   } catch {
     return null;
   }
 }
 
-async function getHistory(ticker: string): Promise<HistoricalPoint[]> {
+async function fetchBlackRockNavByIsin(
+  isin: string
+): Promise<BlackRockNav | null> {
   try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const results: any[] = await (yahooFinance.historical as any)(ticker, {
-      period1: thirtyDaysAgo.toISOString().split("T")[0],
-      interval: "1d",
-    });
-    return results.map((r) => ({
-      date: new Date(r.date).toISOString().split("T")[0],
-      close: r.close,
-    }));
+    const res = await fetch(
+      `https://www.blackrock.com/uk/individual/products/fund-finder?isin=${isin}&siteEntryPassthrough=true&pk=1&dataType=fund&format=json`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; dashboard/1.0)",
+          Accept: "application/json",
+        },
+        next: { revalidate: 3600 },
+      }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const fund = json?.data?.tableData?.data?.[0];
+    if (!fund) return null;
+    return {
+      navDate: fund.navDate || "",
+      nav: parseFloat(fund.nav) || 0,
+      navChange: parseFloat(fund.navChange) || 0,
+      navChangePercent: parseFloat(fund.navChangePercent) || 0,
+      currency: fund.currency || "USD",
+      fundName: fund.fundName || "",
+    };
   } catch {
-    return [];
+    return null;
   }
 }
 
-async function getHoldingQuotes(
-  holdings: { ticker: string; name: string; weight?: number }[]
-): Promise<HoldingQuote[]> {
-  const results = await Promise.allSettled(
-    holdings.map(async (h) => {
-      const q = await getQuote(h.ticker);
-      if (!q) {
-        return {
-          ticker: h.ticker,
-          name: h.name,
-          price: 0,
-          change: 0,
-          changePercent: 0,
-          previousClose: 0,
-          open: 0,
-          dayHigh: 0,
-          dayLow: 0,
-          volume: 0,
-          currency: "USD",
-          fundWeight: h.weight,
-          error: "Data unavailable",
-        } as HoldingQuote;
-      }
-      return { ...q, fundWeight: h.weight } as HoldingQuote;
-    })
-  );
+async function getBlackRockNav(fund: {
+  isin?: string;
+  blackrockProductUrl?: string;
+  name: string;
+}): Promise<BlackRockNav | null> {
+  if (fund.blackrockProductUrl) {
+    const nav = await fetchBlackRockProductNav(fund.blackrockProductUrl);
+    if (nav) return nav;
+  }
+  if (fund.isin) {
+    return fetchBlackRockNavByIsin(fund.isin);
+  }
+  return null;
+}
 
-  return results.map((r, i) => {
-    if (r.status === "fulfilled") return r.value;
+function navToFundQuote(
+  ticker: string,
+  fundName: string,
+  nav: BlackRockNav | null
+): FundQuote | null {
+  if (!nav || nav.nav === 0) return null;
+  return {
+    ticker,
+    name: nav.fundName || fundName,
+    price: nav.nav,
+    change: nav.navChange,
+    changePercent: nav.navChangePercent,
+    previousClose: nav.nav - nav.navChange,
+    open: nav.nav - nav.navChange,
+    dayHigh: nav.nav,
+    dayLow: nav.nav,
+    volume: 0,
+    currency: nav.currency,
+    exchange: `NAV — ${nav.navDate}`,
+  };
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+function fmpToFundQuote(
+  ticker: string,
+  name: string,
+  quotes: Map<string, FmpQuote>
+): FundQuote | null {
+  const q = quotes.get(ticker);
+  if (!q) return null;
+  return {
+    ticker,
+    name: q.name || name,
+    price: q.price,
+    change: q.change,
+    changePercent: q.changesPercentage,
+    previousClose: q.previousClose,
+    open: q.open,
+    dayHigh: q.dayHigh,
+    dayLow: q.dayLow,
+    volume: q.volume,
+    marketCap: q.marketCap,
+    currency: "USD",
+    exchange: q.exchange,
+  };
+}
+
+function fmpToHolding(
+  ticker: string,
+  name: string,
+  weight: number | undefined,
+  quotes: Map<string, FmpQuote>
+): HoldingQuote {
+  const q = quotes.get(ticker);
+  if (!q) {
     return {
-      ticker: holdings[i].ticker,
-      name: holdings[i].name,
+      ticker,
+      name,
       price: 0,
       change: 0,
       changePercent: 0,
@@ -95,82 +229,99 @@ async function getHoldingQuotes(
       dayLow: 0,
       volume: 0,
       currency: "USD",
-      fundWeight: holdings[i].weight,
-      error: "Fetch failed",
-    } as HoldingQuote;
-  });
+      fundWeight: weight,
+      error: "Data unavailable",
+    };
+  }
+  return {
+    ticker,
+    name: q.name || name,
+    price: q.price,
+    change: q.change,
+    changePercent: q.changesPercentage,
+    previousClose: q.previousClose,
+    open: q.open,
+    dayHigh: q.dayHigh,
+    dayLow: q.dayLow,
+    volume: q.volume,
+    currency: "USD",
+    fundWeight: weight,
+  };
 }
 
-async function getMarketIndices(): Promise<MarketIndex[]> {
-  const results = await Promise.allSettled(
-    MARKET_INDICES.map(async (idx) => {
-      const q = await getQuote(idx.ticker);
-      if (!q) {
-        return {
-          ticker: idx.ticker,
-          name: idx.name,
-          price: 0,
-          change: 0,
-          changePercent: 0,
-          currency: "USD",
-        } as MarketIndex;
-      }
-      return {
-        ticker: idx.ticker,
-        name: idx.name,
-        price: q.price,
-        change: q.change,
-        changePercent: q.changePercent,
-        currency: q.currency,
-      } as MarketIndex;
-    })
-  );
-
-  return results
-    .filter((r) => r.status === "fulfilled")
-    .map((r) => (r as PromiseFulfilledResult<MarketIndex>).value);
-}
+// ── Route handler ─────────────────────────────────────────────────────────
 
 export async function GET() {
   try {
-    const [indicesResult, ...fundResults] = await Promise.allSettled([
-      getMarketIndices(),
-      ...FUNDS.map(async (fund): Promise<FundData> => {
-        const [quote, history, holdings] = await Promise.allSettled([
-          getQuote(fund.ticker),
-          getHistory(fund.ticker),
-          getHoldingQuotes(fund.holdings),
-        ]);
+    const ucitsFunds = FUNDS.filter((f) => f.isin);
+    const tradedFunds = FUNDS.filter((f) => !f.isin);
 
-        return {
-          fund,
-          quote:
-            quote.status === "fulfilled"
-              ? (quote.value as FundQuote)
-              : null,
-          history:
-            history.status === "fulfilled" ? history.value : [],
-          holdings:
-            holdings.status === "fulfilled" ? holdings.value : [],
-        };
-      }),
+    const holdingTickers = [
+      ...new Set(FUNDS.flatMap((f) => f.holdings.map((h) => h.ticker))),
+    ];
+
+    const allTradedTickers = [
+      ...tradedFunds.map((f) => f.ticker),
+      ...MARKET_INDICES.map((i) => i.ticker),
+      ...holdingTickers,
+    ];
+
+    // Fire everything in parallel: one batch FMP call + historical + UCITS NAVs
+    const [quotesResult, ...parallelResults] = await Promise.allSettled([
+      fmpBatchQuotes(allTradedTickers),
+      ...tradedFunds.map((f) => fmpHistory(f.ticker)),
+      ...ucitsFunds.map((f) => getBlackRockNav(f)),
     ]);
 
-    const indices =
-      indicesResult.status === "fulfilled" ? indicesResult.value : [];
+    const quotes: Map<string, FmpQuote> =
+      quotesResult.status === "fulfilled" ? quotesResult.value : new Map();
 
-    const funds = fundResults.map((r, i) => {
-      if (r.status === "fulfilled") return r.value as FundData;
+    const tradedHistories = parallelResults
+      .slice(0, tradedFunds.length)
+      .map((r) =>
+        r.status === "fulfilled" ? (r.value as HistoricalPoint[]) : []
+      );
+
+    const ucitsNavs = parallelResults
+      .slice(tradedFunds.length)
+      .map((r) =>
+        r.status === "fulfilled" ? (r.value as BlackRockNav | null) : null
+      );
+
+    // Build fund data
+    const fundsData: FundData[] = FUNDS.map((fund) => {
+      const tradedIdx = tradedFunds.findIndex((f) => f.id === fund.id);
+      const ucitsIdx = ucitsFunds.findIndex((f) => f.id === fund.id);
+
+      const quote =
+        tradedIdx !== -1
+          ? fmpToFundQuote(fund.ticker, fund.name, quotes)
+          : navToFundQuote(fund.ticker, fund.name, ucitsNavs[ucitsIdx] ?? null);
+
+      const history = tradedIdx !== -1 ? tradedHistories[tradedIdx] : [];
+
+      const holdings = fund.holdings.map((h) =>
+        fmpToHolding(h.ticker, h.name, h.weight, quotes)
+      );
+
+      return { fund, quote, history, holdings };
+    });
+
+    // Build indices
+    const indices: MarketIndex[] = MARKET_INDICES.map((idx) => {
+      const q = quotes.get(idx.ticker);
       return {
-        fund: FUNDS[i],
-        quote: null,
-        history: [],
-        holdings: [],
-      } as FundData;
+        ticker: idx.ticker,
+        name: idx.name,
+        price: q?.price ?? 0,
+        change: q?.change ?? 0,
+        changePercent: q?.changesPercentage ?? 0,
+        currency: "USD",
+      };
     });
 
     return NextResponse.json({
-      funds,
+      funds: fundsData,
       indices,
       lastUpdated: new Date().toISOString(),
     });

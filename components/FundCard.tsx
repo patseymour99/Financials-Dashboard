@@ -35,6 +35,7 @@ function CustomTooltip({ active, payload, label }: any) {
 
 export function FundCard({ data }: Props) {
   const { fund, quote, history } = data;
+  const isUcits = !!fund.isin;
   const isUp = (quote?.changePercent ?? 0) >= 0;
   const color = fund.color;
   const chartColor = isUp ? "#10b981" : "#ef4444";
@@ -54,7 +55,7 @@ export function FundCard({ data }: Props) {
               style={{ backgroundColor: color }}
             />
             <span className="text-gray-400 text-xs font-medium uppercase tracking-wide truncate">
-              {fund.ticker}
+              {isUcits ? `ISIN ${fund.isin}` : fund.ticker}
             </span>
           </div>
           <h2 className="text-white font-bold text-lg leading-tight">
@@ -90,7 +91,7 @@ export function FundCard({ data }: Props) {
                 {quote.change.toFixed(2)} ({isUp ? "+" : ""}
                 {quote.changePercent.toFixed(2)}%)
               </span>
-              <span className="text-gray-500 text-xs">today</span>
+              <span className="text-gray-500 text-xs">{isUcits ? "vs prev NAV" : "today"}</span>
             </div>
           </div>
           {quote.ytdReturn != null && (
@@ -111,14 +112,21 @@ export function FundCard({ data }: Props) {
         <div className="flex items-center gap-2 text-amber-400">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <p className="text-sm">
-            Price data unavailable — verify ticker{" "}
-            <span className="font-mono font-bold">{fund.ticker}</span>
+            {isUcits
+              ? "NAV unavailable — BlackRock data endpoint may have changed"
+              : <>Price data unavailable — verify ticker <span className="font-mono font-bold">{fund.ticker}</span></>}
           </p>
         </div>
       )}
 
       {/* Chart */}
-      {chartData.length > 1 ? (
+      {isUcits && (
+        <div className="flex items-center gap-1.5 -mt-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <span className="text-gray-600 text-xs">Daily NAV — no intraday chart available for UCITS funds</span>
+        </div>
+      )}
+      {!isUcits && chartData.length > 1 && (
         <div className="h-28 -mx-1">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
@@ -156,33 +164,35 @@ export function FundCard({ data }: Props) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      ) : (
-        <div className="h-28 flex items-center justify-center text-gray-600 text-xs">
-          No chart history available
-        </div>
       )}
 
       {/* Key Stats */}
       {quote && quote.price > 0 && (
         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-800">
-          <div>
-            <p className="text-gray-500 text-xs">Open</p>
-            <p className="text-white text-sm font-medium">
-              {quote.open.toFixed(2)}
-            </p>
-          </div>
-          <div>
-            <p className="text-gray-500 text-xs">Day Low</p>
-            <p className="text-white text-sm font-medium">
-              {quote.dayLow.toFixed(2)}
-            </p>
-          </div>
-          <div>
-            <p className="text-gray-500 text-xs">Day High</p>
-            <p className="text-white text-sm font-medium">
-              {quote.dayHigh.toFixed(2)}
-            </p>
-          </div>
+          {!isUcits && (
+            <div>
+              <p className="text-gray-500 text-xs">Open</p>
+              <p className="text-white text-sm font-medium">
+                {quote.open.toFixed(2)}
+              </p>
+            </div>
+          )}
+          {!isUcits && (
+            <div>
+              <p className="text-gray-500 text-xs">Day Low</p>
+              <p className="text-white text-sm font-medium">
+                {quote.dayLow.toFixed(2)}
+              </p>
+            </div>
+          )}
+          {!isUcits && (
+            <div>
+              <p className="text-gray-500 text-xs">Day High</p>
+              <p className="text-white text-sm font-medium">
+                {quote.dayHigh.toFixed(2)}
+              </p>
+            </div>
+          )}
           {quote.expenseRatio != null && (
             <div>
               <p className="text-gray-500 text-xs">Expense Ratio</p>

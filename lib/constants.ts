@@ -5,10 +5,13 @@ export const FUNDS: FundConfig[] = [
     id: "bgf-world-financials",
     name: "BGF World Financials Fund",
     shortName: "BGF World Financials",
-    // Yahoo Finance ticker — set BGF_TICKER env var to override
-    // Common format for UCITS: fund ISIN + exchange suffix
-    // e.g. "0P000062R2.L" (London), or check Yahoo Finance for your share class
-    ticker: process.env.BGF_TICKER || "0P000062R2.L",
+    ticker: "BGF-WORLD-FINANCIALS", // display only — data comes from BlackRock NAV
+    isin: "LU0171307068", // A2 USD share class
+    // Set BGF_BLACKROCK_URL env var to override, or find it at:
+    // https://www.blackrock.com/uk/individual/products/229115/
+    // The slug is the path segment after /products/
+    blackrockProductUrl:
+      process.env.BGF_BLACKROCK_URL || "229115/bgf-world-financials-fund",
     currency: "USD",
     description:
       "BlackRock Global Funds World Financials Fund — actively managed exposure to global financial sector equities.",
@@ -23,15 +26,17 @@ export const FUNDS: FundConfig[] = [
       { ticker: "GS", name: "Goldman Sachs", weight: 3.5 },
       { ticker: "MS", name: "Morgan Stanley", weight: 3.2 },
       { ticker: "AXP", name: "American Express", weight: 2.9 },
-      { ticker: "HSBA.L", name: "HSBC", weight: 2.7 },
+      { ticker: "C", name: "Citigroup", weight: 2.7 },
     ],
   },
   {
     id: "ishares-fintech",
     name: "iShares Fintech Active ETF",
     shortName: "iShares Fintech",
-    // Verify ticker on Yahoo Finance — set FINTECH_TICKER env var to override
+    // If this is a US-listed ETF, set FINTECH_TICKER to the exact exchange ticker.
+    // If it is a UCITS ETF, set the ISIN instead via FINTECH_ISIN.
     ticker: process.env.FINTECH_TICKER || "IACF",
+    isin: process.env.FINTECH_ISIN || undefined, // set if UCITS
     currency: "USD",
     description:
       "iShares Fintech Active ETF — actively managed exposure to companies driving financial technology innovation.",
@@ -57,10 +62,8 @@ export const MARKET_INDICES = [
   { ticker: "^IXIC", name: "Nasdaq" },
   { ticker: "^VIX", name: "VIX" },
   { ticker: "^FTSE", name: "FTSE 100" },
-  { ticker: "EURUSD=X", name: "EUR/USD" },
+  { ticker: "EURUSD", name: "EUR/USD" },
 ];
-
-export const FINANCIAL_SECTOR_TICKERS = ["XLF", "KBE", "KRE", "IAI"];
 
 export const NEWS_QUERIES = {
   market: "stock market financial news today",

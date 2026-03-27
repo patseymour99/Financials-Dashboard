@@ -1,18 +1,26 @@
+export interface HoldingConfig {
+  ticker: string;
+  name: string;
+  weight?: number;
+}
+
 export interface FundConfig {
   id: string;
   name: string;
   shortName: string;
   ticker: string;
+  /** ISIN — set for UCITS mutual funds that are not exchange-traded */
+  isin?: string;
+  /**
+   * BlackRock product URL slug for their performance API.
+   * Find it by inspecting https://www.blackrock.com/uk/individual/products/...
+   * e.g. "229115/bgf-world-financials-fund"
+   */
+  blackrockProductUrl?: string;
   currency: string;
   description: string;
   color: string;
   holdings: HoldingConfig[];
-}
-
-export interface HoldingConfig {
-  ticker: string;
-  name: string;
-  weight?: number;
 }
 
 export interface Quote {
@@ -33,13 +41,8 @@ export interface Quote {
 }
 
 export interface FundQuote extends Quote {
-  nav?: number;
-  aum?: number;
   ytdReturn?: number;
-  threeYearReturn?: number;
-  fiveYearReturn?: number;
   expenseRatio?: number;
-  inceptionDate?: string;
 }
 
 export interface HistoricalPoint {
@@ -67,7 +70,6 @@ export interface MarketIndex {
 }
 
 export interface HoldingQuote extends Quote {
-  ticker: string;
   fundWeight?: number;
 }
 
