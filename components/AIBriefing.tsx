@@ -1,17 +1,13 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Sparkles, RefreshCw, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { BriefingRequest } from "@/lib/types";
 
-interface Props {
-  data: BriefingRequest;
-}
+interface Props { data: BriefingRequest | null }
 
-// Simple markdown renderer for the briefing output
-function renderMarkdown(text: string) {
-  const lines = text.split("\n");
+function renderMarkdown(text: string): React.ReactNode[] {
   const elements: React.ReactNode[] = [];
+  const lines = text.split("\n");
   let i = 0;
 
   while (i < lines.length) {
@@ -19,68 +15,39 @@ function renderMarkdown(text: string) {
 
     if (line.startsWith("## ")) {
       elements.push(
-        <h2
-          key={i}
-          className="text-xl font-bold text-white mt-6 mb-3 pb-2 border-b border-gray-700 first:mt-0"
-        >
+        <h2 key={i} className="text-base font-bold mt-5 mb-2 pb-1.5 border-b first:mt-0"
+          style={{ color: "var(--text-1)", borderColor: "var(--border-2)" }}>
           {line.slice(3)}
         </h2>
       );
     } else if (line.startsWith("### ")) {
       elements.push(
-        <h3
-          key={i}
-          className="text-base font-semibold text-indigo-300 mt-5 mb-2"
-        >
+        <h3 key={i} className="text-sm font-semibold mt-4 mb-1.5" style={{ color: "var(--indigo)" }}>
           {line.slice(4)}
         </h3>
       );
-    } else if (line.startsWith("#### ")) {
-      elements.push(
-        <h4
-          key={i}
-          className="text-sm font-semibold text-gray-300 mt-4 mb-1.5"
-        >
-          {line.slice(5)}
-        </h4>
-      );
     } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      const items = [line.slice(2)];
-      while (
-        i + 1 < lines.length &&
-        (lines[i + 1].startsWith("- ") || lines[i + 1].startsWith("* "))
-      ) {
+      const bullets: string[] = [line.slice(2)];
+      while (i + 1 < lines.length && (lines[i + 1].startsWith("- ") || lines[i + 1].startsWith("* "))) {
         i++;
-        items.push(lines[i].slice(2));
+        bullets.push(lines[i].slice(2));
       }
       elements.push(
-        <ul key={i} className="list-none space-y-1.5 my-2 ml-0">
-          {items.map((item, j) => (
-            <li
-              key={j}
-              className="flex gap-2 text-gray-300 text-sm leading-relaxed"
-            >
-              <span className="text-indigo-400 mt-1.5 flex-shrink-0">▸</span>
-              <span dangerouslySetInnerHTML={{ __html: applyInline(item) }} />
+        <ul key={i} className="space-y-1 my-1.5">
+          {bullets.map((b, j) => (
+            <li key={j} className="flex gap-2 text-xs leading-relaxed" style={{ color: "var(--text-2)" }}>
+              <span className="mt-1 shrink-0" style={{ color: "var(--indigo)" }}>›</span>
+              <span dangerouslySetInnerHTML={{ __html: inlineFormat(b) }} />
             </li>
           ))}
         </ul>
       );
-    } else if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
-      elements.push(
-        <p key={i} className="font-semibold text-white text-sm my-1">
-          {line.slice(2, -2)}
-        </p>
-      );
     } else if (line.trim() === "") {
-      elements.push(<div key={i} className="h-1" />);
+      elements.push(<div key={i} className="h-0.5" />);
     } else if (line.trim()) {
       elements.push(
-        <p
-          key={i}
-          className="text-gray-300 text-sm leading-relaxed my-1"
-          dangerouslySetInnerHTML={{ __html: applyInline(line) }}
-        />
+        <p key={i} className="text-xs leading-relaxed my-1" style={{ color: "var(--text-2)" }}
+          dangerouslySetInnerHTML={{ __html: inlineFormat(line) }} />
       );
     }
     i++;
@@ -88,163 +55,147 @@ function renderMarkdown(text: string) {
   return elements;
 }
 
-function applyInline(text: string): string {
-  // Bold
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>');
-  // Italic
-  text = text.replace(/\*(.+?)\*/g, '<em class="text-gray-200">$1</em>');
-  // Backticks
-  text = text.replace(
-    /`(.+?)`/g,
-    '<code class="bg-gray-700 text-emerald-300 px-1 py-0.5 rounded text-xs font-mono">$1</code>'
-  );
-  return text;
+function inlineFormat(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, `<strong style="color:var(--text-1)">$1</strong>`)
+    .replace(/\*(.+?)\*/g, `<em style="color:var(--text-2)">$1</em>`)
+    .replace(/`(.+?)`/g,
+      `<code style="background:var(--surface-3);color:#86efac;padding:0 4px;border-radius:3px;font-size:11px">$1</code>`);
 }
 
 export function AIBriefing({ data }: Props) {
   const [briefing, setBriefing] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
   const [expanded, setExpanded] = useState(true);
   const [generated, setGenerated] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  async function generateBriefing() {
-    if (loading) {
-      abortRef.current?.abort();
-      return;
-    }
+  async function generate() {
+    if (loading) { abortRef.current?.abort(); return; }
+    if (!data)   return;
 
-    setLoading(true);
-    setError("");
-    setBriefing("");
-    setExpanded(true);
-    setGenerated(false);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
+    setLoading(true); setError(""); setBriefing(""); setExpanded(true); setGenerated(false);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
     try {
       const res = await fetch("/api/briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-        signal: controller.signal,
+        signal: ctrl.signal,
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
 
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No response body");
 
-      const decoder = new TextDecoder();
+      const dec = new TextDecoder();
       let acc = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        acc += decoder.decode(value, { stream: true });
+        acc += dec.decode(value, { stream: true });
         setBriefing(acc);
       }
       setGenerated(true);
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        setError((err as Error).message || "Failed to generate briefing");
-      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setError((e as Error).message);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+    <div
+      className="rounded-xl border overflow-hidden"
+      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+    >
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-800">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-          <Sparkles className="w-4 h-4 text-white" />
+      <div
+        className="flex items-center gap-3 px-5 py-3.5 border-b"
+        style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+      >
+        {/* Icon */}
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-sm"
+          style={{ background: "linear-gradient(135deg,#4f46e5,#7c3aed)" }}
+        >
+          ✦
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="text-white font-semibold text-sm">
-            AI Morning Briefing
-          </h2>
-          <p className="text-gray-500 text-xs">
-            Powered by Claude — full analysis of your funds & market context
+          <p className="text-sm font-semibold" style={{ color: "var(--text-1)" }}>AI Morning Briefing</p>
+          <p className="text-xs" style={{ color: "var(--text-3)" }}>
+            Powered by Claude · Full fund analysis, news synthesis &amp; daily agenda
           </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Controls */}
+        <div className="flex items-center gap-2 shrink-0">
           {generated && (
             <button
               onClick={() => setExpanded((e) => !e)}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              className="text-xs px-2.5 py-1 rounded border transition-colors"
+              style={{ color: "var(--text-3)", borderColor: "var(--border-2)", background: "var(--surface-3)" }}
             >
-              {expanded ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
+              {expanded ? "Collapse ↑" : "Expand ↓"}
             </button>
           )}
           <button
-            onClick={generateBriefing}
-            disabled={false}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            onClick={generate}
+            className="text-xs font-semibold px-3.5 py-1.5 rounded transition-all"
+            style={
               loading
-                ? "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30"
-                : "bg-indigo-500 hover:bg-indigo-600 text-white"
-            }`}
+                ? { background: "rgba(239,68,68,0.12)", color: "var(--red)", border: "1px solid rgba(239,68,68,0.3)" }
+                : { background: "linear-gradient(135deg,#4f46e5,#7c3aed)", color: "#fff", border: "1px solid transparent" }
+            }
           >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
-            />
-            {loading
-              ? "Stop"
-              : generated
-                ? "Regenerate"
-                : "Generate Briefing"}
+            {loading ? "■ Stop" : generated ? "↺ Regenerate" : "Generate Briefing"}
           </button>
         </div>
       </div>
 
-      {/* Content */}
+      {/* Body */}
       {!briefing && !loading && !error && (
-        <div className="px-6 py-12 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center mx-auto mb-3">
-            <Sparkles className="w-6 h-6 text-gray-600" />
-          </div>
-          <p className="text-gray-500 text-sm">
-            Click &quot;Generate Briefing&quot; to get a comprehensive AI
-            analysis of your funds, portfolio companies, and market conditions.
+        <div className="flex flex-col items-center justify-center py-10 gap-2">
+          <p className="text-2xl opacity-20">✦</p>
+          <p className="text-xs text-center max-w-xs" style={{ color: "var(--text-3)" }}>
+            Click <strong style={{ color: "var(--text-2)" }}>Generate Briefing</strong> to get a comprehensive
+            AI analysis of your funds, portfolio companies, market conditions, and a daily agenda.
           </p>
         </div>
       )}
 
       {error && (
-        <div className="px-6 py-4 flex items-start gap-2 text-red-400">
-          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2 px-5 py-4 text-xs" style={{ color: "var(--red)" }}>
+          <span>⚠</span>
           <div>
-            <p className="text-sm font-medium">Failed to generate briefing</p>
-            <p className="text-xs text-red-500 mt-0.5">{error}</p>
+            <p className="font-medium">Failed to generate briefing</p>
+            <p className="mt-0.5 opacity-70">{error}</p>
           </div>
         </div>
       )}
 
       {(briefing || loading) && expanded && (
-        <div className="px-6 py-5">
+        <div className="px-6 py-5 max-h-[70vh] overflow-y-auto">
           {renderMarkdown(briefing)}
           {loading && (
-            <span className="inline-block w-0.5 h-4 bg-indigo-400 animate-pulse ml-0.5 rounded-full" />
+            <span
+              className="inline-block w-0.5 h-3.5 ml-0.5 animate-pulse rounded-full"
+              style={{ background: "var(--indigo)" }}
+            />
           )}
         </div>
       )}
 
       {briefing && !expanded && (
         <div
-          className="px-6 py-3 text-gray-500 text-xs cursor-pointer hover:text-gray-400 transition-colors"
+          className="px-5 py-2.5 text-xs cursor-pointer hover:opacity-80 transition-opacity"
+          style={{ color: "var(--text-3)" }}
           onClick={() => setExpanded(true)}
         >
-          Click to expand briefing ↓
+          Click to read briefing ↓
         </div>
       )}
     </div>

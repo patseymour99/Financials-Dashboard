@@ -8,16 +8,9 @@ export interface FundConfig {
   id: string;
   name: string;
   shortName: string;
-  /** Display ticker (e.g. "BPAY") or placeholder for UCITS-only funds */
   ticker: string;
-  /** ISIN — present for UCITS funds */
   isin?: string;
-  /** BlackRock product ID (the number in the product page URL) */
   blackrockProductId: string;
-  /**
-   * BlackRock regional site — 'us' for iShares US ETFs, 'uk' for UCITS.
-   * Only affects the Referer header; the cache API path is the same.
-   */
   blackrockRegion: "uk" | "us";
   currency: string;
   description: string;
@@ -83,9 +76,27 @@ export interface FundData {
   holdings: HoldingQuote[];
 }
 
+export interface MetricAsset {
+  id: string;
+  ticker: string;
+  name: string;
+  label: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  mtdReturn: number | null;
+  ytdReturn: number | null;
+  currency: string;
+  /** If true, price is a % yield — display differently */
+  isYield?: boolean;
+  /** If true, price is a rate (BTC, commodities) — no $B suffix */
+  isCrypto?: boolean;
+}
+
 export interface DashboardData {
   funds: FundData[];
   indices: MarketIndex[];
+  metrics: MetricAsset[];
   news: {
     market: NewsItem[];
     sector: NewsItem[];
@@ -97,6 +108,7 @@ export interface DashboardData {
 export interface BriefingRequest {
   fundData: FundData[];
   indices: MarketIndex[];
+  metrics: MetricAsset[];
   news: {
     market: NewsItem[];
     sector: NewsItem[];

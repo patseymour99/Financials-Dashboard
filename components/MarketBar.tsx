@@ -1,51 +1,56 @@
 "use client";
 
 import { MarketIndex } from "@/lib/types";
-import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface Props {
   indices: MarketIndex[];
 }
 
+function fmt(price: number): string {
+  if (price === 0) return "—";
+  if (price < 10)   return price.toFixed(4);
+  if (price < 1000) return price.toFixed(2);
+  return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 export function MarketBar({ indices }: Props) {
   if (!indices.length) return null;
 
+  // Duplicate for seamless scroll loop
+  const items = [...indices, ...indices];
+
   return (
-    <div className="bg-gray-900 border-b border-gray-800 overflow-x-auto">
-      <div className="flex items-center gap-0 min-w-max px-4">
-        {indices.map((idx) => {
+    <div
+      className="border-b overflow-hidden"
+      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+    >
+      <div className="flex ticker-track whitespace-nowrap">
+        {items.map((idx, i) => {
           const isUp = idx.changePercent >= 0;
+          const hasData = idx.price > 0;
           return (
             <div
-              key={idx.ticker}
-              className="flex items-center gap-2 px-4 py-2 border-r border-gray-800 last:border-r-0"
+              key={`${idx.ticker}-${i}`}
+              className="inline-flex items-center gap-2 px-5 py-2 border-r shrink-0"
+              style={{ borderColor: "var(--border)" }}
             >
-              <span className="text-gray-400 text-xs font-medium whitespace-nowrap">
+              <span className="text-xs font-semibold tracking-wide" style={{ color: "var(--text-2)" }}>
                 {idx.name}
               </span>
-              <span className="text-white text-xs font-semibold">
-                {idx.price > 0
-                  ? idx.price < 100
-                    ? idx.price.toFixed(4)
-                    : idx.price.toLocaleString("en-US", {
-                        maximumFractionDigits: 2,
-                      })
-                  : "—"}
-              </span>
-              {idx.price > 0 && (
-                <span
-                  className={`flex items-center gap-0.5 text-xs font-medium ${
-                    isUp ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  {isUp ? (
-                    <TrendingUp className="w-3 h-3" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3" />
-                  )}
-                  {isUp ? "+" : ""}
-                  {idx.changePercent.toFixed(2)}%
-                </span>
+              {hasData ? (
+                <>
+                  <span className="text-xs font-semibold tabnum" style={{ color: "var(--text-1)" }}>
+                    {fmt(idx.price)}
+                  </span>
+                  <span
+                    className="text-xs font-medium tabnum"
+                    style={{ color: isUp ? "var(--green)" : "var(--red)" }}
+                  >
+                    {isUp ? "▲" : "▼"} {Math.abs(idx.changePercent).toFixed(2)}%
+                  </span>
+                </>
+              ) : (
+                <span className="text-xs" style={{ color: "var(--text-3)" }}>—</span>
               )}
             </div>
           );
