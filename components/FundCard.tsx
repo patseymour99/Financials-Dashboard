@@ -25,7 +25,7 @@ function CustomTooltip({ active, payload, label }: any) {
           {label ? format(parseISO(label), "dd MMM yyyy") : ""}
         </p>
         <p className="text-white font-semibold">
-          {payload[0].value.toFixed(2)}
+          {Number(payload[0].value).toFixed(2)}
         </p>
       </div>
     );
@@ -41,8 +41,9 @@ export function FundCard({ data }: Props) {
   const chartColor = isUp ? "#10b981" : "#ef4444";
 
   const chartData = history.slice(-60);
-  const minVal = Math.min(...chartData.map((d) => d.close)) * 0.995;
-  const maxVal = Math.max(...chartData.map((d) => d.close)) * 1.005;
+  const prices = chartData.map((d) => d.close).filter((v) => v > 0);
+  const minVal = prices.length ? Math.min(...prices) * 0.995 : 0;
+  const maxVal = prices.length ? Math.max(...prices) * 1.005 : 1;
 
   return (
     <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 flex flex-col gap-4">
@@ -57,6 +58,9 @@ export function FundCard({ data }: Props) {
             <span className="text-gray-400 text-xs font-medium uppercase tracking-wide truncate">
               {isUcits ? `ISIN ${fund.isin}` : fund.ticker}
             </span>
+            <span className="ml-auto text-gray-600 text-xs bg-gray-800 px-1.5 py-0.5 rounded">
+              BlackRock
+            </span>
           </div>
           <h2 className="text-white font-bold text-lg leading-tight">
             {fund.shortName}
@@ -67,15 +71,20 @@ export function FundCard({ data }: Props) {
         </div>
       </div>
 
-      {/* Price */}
+      {/* Price / NAV */}
       {quote ? (
         <div className="flex items-end gap-3">
           <div>
-            <p className="text-3xl font-bold text-white tabular-nums">
-              {quote.price > 0
-                ? `${quote.currency} ${quote.price.toFixed(2)}`
-                : "—"}
-            </p>
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-3xl font-bold text-white tabular-nums">
+                {quote.price > 0
+                  ? `${quote.currency} ${quote.price.toFixed(2)}`
+                  : "—"}
+              </p>
+              <span className="text-gray-600 text-xs">
+                {isUcits ? "NAV" : "NAV"}
+              </span>
+            </div>
             <div
               className={`flex items-center gap-1.5 mt-1 ${
                 isUp ? "text-emerald-400" : "text-red-400"
@@ -91,19 +100,13 @@ export function FundCard({ data }: Props) {
                 {quote.change.toFixed(2)} ({isUp ? "+" : ""}
                 {quote.changePercent.toFixed(2)}%)
               </span>
-              <span className="text-gray-500 text-xs">{isUcits ? "vs prev NAV" : "today"}</span>
+              <span className="text-gray-500 text-xs">vs prev day</span>
             </div>
           </div>
-          {quote.ytdReturn != null && (
+          {quote.exchange && (
             <div className="ml-auto text-right">
-              <p className="text-gray-500 text-xs">YTD</p>
-              <p
-                className={`text-sm font-semibold ${
-                  quote.ytdReturn >= 0 ? "text-emerald-400" : "text-red-400"
-                }`}
-              >
-                {quote.ytdReturn >= 0 ? "+" : ""}
-                {(quote.ytdReturn * 100).toFixed(2)}%
+              <p className="text-gray-600 text-xs leading-tight">
+                {quote.exchange}
               </p>
             </div>
           )}
@@ -113,20 +116,14 @@ export function FundCard({ data }: Props) {
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <p className="text-sm">
             {isUcits
-              ? "NAV unavailable — BlackRock data endpoint may have changed"
-              : <>Price data unavailable — verify ticker <span className="font-mono font-bold">{fund.ticker}</span></>}
+              ? "NAV unavailable — BlackRock endpoint may have changed"
+              : `NAV unavailable — BlackRock product ${fund.blackrockProductId}`}
           </p>
         </div>
       )}
 
-      {/* Chart */}
-      {isUcits && (
-        <div className="flex items-center gap-1.5 -mt-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-          <span className="text-gray-600 text-xs">Daily NAV — no intraday chart available for UCITS funds</span>
-        </div>
-      )}
-      {!isUcits && chartData.length > 1 && (
+      {/* NAV history chart — available for both funds */}
+      {chartData.length > 1 ? (
         <div className="h-28 -mx-1">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
@@ -164,32 +161,39 @@ export function FundCard({ data }: Props) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
+      ) : (
+        <div className="h-28 flex items-center justify-center text-gray-600 text-xs">
+          Loading NAV history…
+        </div>
       )}
 
-      {/* Key Stats */}
+      {/* Key stats */}
       {quote && quote.price > 0 && (
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-800">
-          {!isUcits && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-800">
+          <div>
+            <p className="text-gray-500 text-xs">Prev Day NAV</p>
+            <p className="text-white text-sm font-medium tabular-nums">
+              {quote.currency} {quote.previousClose.toFixed(2)}
+            </p>
+          </div>
+          {quote.navDate && (
             <div>
-              <p className="text-gray-500 text-xs">Open</p>
+              <p className="text-gray-500 text-xs">As of</p>
               <p className="text-white text-sm font-medium">
-                {quote.open.toFixed(2)}
+                {format(parseISO(quote.navDate), "dd MMM yyyy")}
               </p>
             </div>
           )}
-          {!isUcits && (
+          {quote.ytdReturn != null && (
             <div>
-              <p className="text-gray-500 text-xs">Day Low</p>
-              <p className="text-white text-sm font-medium">
-                {quote.dayLow.toFixed(2)}
-              </p>
-            </div>
-          )}
-          {!isUcits && (
-            <div>
-              <p className="text-gray-500 text-xs">Day High</p>
-              <p className="text-white text-sm font-medium">
-                {quote.dayHigh.toFixed(2)}
+              <p className="text-gray-500 text-xs">YTD</p>
+              <p
+                className={`text-sm font-semibold tabular-nums ${
+                  quote.ytdReturn >= 0 ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {quote.ytdReturn >= 0 ? "+" : ""}
+                {(quote.ytdReturn * 100).toFixed(2)}%
               </p>
             </div>
           )}
@@ -199,12 +203,6 @@ export function FundCard({ data }: Props) {
               <p className="text-white text-sm font-medium">
                 {(quote.expenseRatio * 100).toFixed(2)}%
               </p>
-            </div>
-          )}
-          {quote.exchange && (
-            <div>
-              <p className="text-gray-500 text-xs">Exchange</p>
-              <p className="text-white text-sm font-medium">{quote.exchange}</p>
             </div>
           )}
         </div>

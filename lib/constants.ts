@@ -5,13 +5,12 @@ export const FUNDS: FundConfig[] = [
     id: "bgf-world-financials",
     name: "BGF World Financials Fund",
     shortName: "BGF World Financials",
-    ticker: "BGF-WORLD-FINANCIALS", // display only — data comes from BlackRock NAV
-    isin: "LU0171307068", // A2 USD share class
-    // Set BGF_BLACKROCK_URL env var to override, or find it at:
-    // https://www.blackrock.com/uk/individual/products/229115/
-    // The slug is the path segment after /products/
-    blackrockProductUrl:
-      process.env.BGF_BLACKROCK_URL || "229115/bgf-world-financials-fund",
+    ticker: "BGF-WFIN",
+    isin: "LU0106831901", // A2 USD share class
+    // Override with BGF_PRODUCT_ID env var to switch share class:
+    //   A2 EUR: 229935  |  A2 USD: 229936  |  D2 USD: 229939
+    blackrockProductId: process.env.BGF_PRODUCT_ID || "229936",
+    blackrockRegion: "uk",
     currency: "USD",
     description:
       "BlackRock Global Funds World Financials Fund — actively managed exposure to global financial sector equities.",
@@ -31,15 +30,15 @@ export const FUNDS: FundConfig[] = [
   },
   {
     id: "ishares-fintech",
-    name: "iShares Fintech Active ETF",
-    shortName: "iShares Fintech",
-    // If this is a US-listed ETF, set FINTECH_TICKER to the exact exchange ticker.
-    // If it is a UCITS ETF, set the ISIN instead via FINTECH_ISIN.
-    ticker: process.env.FINTECH_TICKER || "IACF",
-    isin: process.env.FINTECH_ISIN || undefined, // set if UCITS
+    name: "iShares FinTech Active ETF",
+    shortName: "iShares FinTech",
+    ticker: "BPAY",
+    // No ISIN — this is a US-listed ETF on NYSE Arca
+    blackrockProductId: "329128",
+    blackrockRegion: "us",
     currency: "USD",
     description:
-      "iShares Fintech Active ETF — actively managed exposure to companies driving financial technology innovation.",
+      "iShares FinTech Active ETF (BPAY) — actively managed exposure to companies driving financial technology innovation. NYSE Arca.",
     color: "#6366f1",
     holdings: [
       { ticker: "V", name: "Visa", weight: 8.5 },

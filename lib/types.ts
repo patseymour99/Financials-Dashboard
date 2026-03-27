@@ -8,15 +8,17 @@ export interface FundConfig {
   id: string;
   name: string;
   shortName: string;
+  /** Display ticker (e.g. "BPAY") or placeholder for UCITS-only funds */
   ticker: string;
-  /** ISIN — set for UCITS mutual funds that are not exchange-traded */
+  /** ISIN — present for UCITS funds */
   isin?: string;
+  /** BlackRock product ID (the number in the product page URL) */
+  blackrockProductId: string;
   /**
-   * BlackRock product URL slug for their performance API.
-   * Find it by inspecting https://www.blackrock.com/uk/individual/products/...
-   * e.g. "229115/bgf-world-financials-fund"
+   * BlackRock regional site — 'us' for iShares US ETFs, 'uk' for UCITS.
+   * Only affects the Referer header; the cache API path is the same.
    */
-  blackrockProductUrl?: string;
+  blackrockRegion: "uk" | "us";
   currency: string;
   description: string;
   color: string;
@@ -41,6 +43,7 @@ export interface Quote {
 }
 
 export interface FundQuote extends Quote {
+  navDate?: string;
   ytdReturn?: number;
   expenseRatio?: number;
 }
