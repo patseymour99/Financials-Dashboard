@@ -1,0 +1,204 @@
+"use client";
+
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
+import { FundData } from "@/lib/types";
+import { format, parseISO } from "date-fns";
+
+interface Props {
+  data: FundData;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CustomTooltip({ active, payload, label }: any) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs">
+        <p className="text-gray-400">
+          {label ? format(parseISO(label), "dd MMM yyyy") : ""}
+        </p>
+        <p className="text-white font-semibold">
+          {payload[0].value.toFixed(2)}
+        </p>
+      </div>
+    );
+  }
+  return null;
+}
+
+export function FundCard({ data }: Props) {
+  const { fund, quote, history } = data;
+  const isUp = (quote?.changePercent ?? 0) >= 0;
+  const color = fund.color;
+  const chartColor = isUp ? "#10b981" : "#ef4444";
+
+  const chartData = history.slice(-60);
+  const minVal = Math.min(...chartData.map((d) => d.close)) * 0.995;
+  const maxVal = Math.max(...chartData.map((d) => d.close)) * 1.005;
+
+  return (
+    <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 flex flex-col gap-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: color }}
+            />
+            <span className="text-gray-400 text-xs font-medium uppercase tracking-wide truncate">
+              {fund.ticker}
+            </span>
+          </div>
+          <h2 className="text-white font-bold text-lg leading-tight">
+            {fund.shortName}
+          </h2>
+          <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">
+            {fund.description}
+          </p>
+        </div>
+      </div>
+
+      {/* Price */}
+      {quote ? (
+        <div className="flex items-end gap-3">
+          <div>
+            <p className="text-3xl font-bold text-white tabular-nums">
+              {quote.price > 0
+                ? `${quote.currency} ${quote.price.toFixed(2)}`
+                : "—"}
+            </p>
+            <div
+              className={`flex items-center gap-1.5 mt-1 ${
+                isUp ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {isUp ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : (
+                <TrendingDown className="w-4 h-4" />
+              )}
+              <span className="text-sm font-semibold">
+                {isUp ? "+" : ""}
+                {quote.change.toFixed(2)} ({isUp ? "+" : ""}
+                {quote.changePercent.toFixed(2)}%)
+              </span>
+              <span className="text-gray-500 text-xs">today</span>
+            </div>
+          </div>
+          {quote.ytdReturn != null && (
+            <div className="ml-auto text-right">
+              <p className="text-gray-500 text-xs">YTD</p>
+              <p
+                className={`text-sm font-semibold ${
+                  quote.ytdReturn >= 0 ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {quote.ytdReturn >= 0 ? "+" : ""}
+                {(quote.ytdReturn * 100).toFixed(2)}%
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-amber-400">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <p className="text-sm">
+            Price data unavailable — verify ticker{" "}
+            <span className="font-mono font-bold">{fund.ticker}</span>
+          </p>
+        </div>
+      )}
+
+      {/* Chart */}
+      {chartData.length > 1 ? (
+        <div className="h-28 -mx-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient
+                  id={`grad-${fund.id}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop
+                    offset="5%"
+                    stopColor={chartColor}
+                    stopOpacity={0.3}
+                  />
+                  <stop
+                    offset="95%"
+                    stopColor={chartColor}
+                    stopOpacity={0}
+                  />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="date" hide />
+              <YAxis domain={[minVal, maxVal]} hide />
+              <Tooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="close"
+                stroke={chartColor}
+                strokeWidth={2}
+                fill={`url(#grad-${fund.id})`}
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="h-28 flex items-center justify-center text-gray-600 text-xs">
+          No chart history available
+        </div>
+      )}
+
+      {/* Key Stats */}
+      {quote && quote.price > 0 && (
+        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-800">
+          <div>
+            <p className="text-gray-500 text-xs">Open</p>
+            <p className="text-white text-sm font-medium">
+              {quote.open.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-500 text-xs">Day Low</p>
+            <p className="text-white text-sm font-medium">
+              {quote.dayLow.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-500 text-xs">Day High</p>
+            <p className="text-white text-sm font-medium">
+              {quote.dayHigh.toFixed(2)}
+            </p>
+          </div>
+          {quote.expenseRatio != null && (
+            <div>
+              <p className="text-gray-500 text-xs">Expense Ratio</p>
+              <p className="text-white text-sm font-medium">
+                {(quote.expenseRatio * 100).toFixed(2)}%
+              </p>
+            </div>
+          )}
+          {quote.exchange && (
+            <div>
+              <p className="text-gray-500 text-xs">Exchange</p>
+              <p className="text-white text-sm font-medium">{quote.exchange}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
