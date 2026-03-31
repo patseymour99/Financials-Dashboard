@@ -46,10 +46,9 @@ export async function GET(req: NextRequest) {
     ];
 
     const [marketRes, sectorRes, ...portfolioRes] = await Promise.allSettled([
-      fetchNews("stock market financial news", 12, 900),
-      fetchNews(sectorQueries.sector, 12, 900),
-      // Fetch news per portfolio ticker (top 6 unique ones)
-      ...portfolioTickers.slice(0, 6).map((t) => fetchNews(t, 4, 900)),
+      fetchNews("stock market financial news", 12),
+      fetchNews(sectorQueries.sector, 12),
+      ...portfolioTickers.slice(0, 6).map((t) => fetchNews(t, 4)),
     ]);
 
     const market    = marketRes.status  === "fulfilled" ? dedupe(marketRes.value.map(mapNewsItem))  : [];

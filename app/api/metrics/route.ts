@@ -37,8 +37,8 @@ export async function GET() {
 
     // Quotes (one batch call) + YTD history per ticker — all in parallel
     const [quotesResult, ...histResults] = await Promise.allSettled([
-      fetchQuotes(tickers, 300),
-      ...tickers.map((t) => fetchHistory(t, "ytd", 3600)),
+      fetchQuotes(tickers),
+      ...tickers.map((t) => fetchHistory(t, "ytd")),
     ]);
 
     const quotes =

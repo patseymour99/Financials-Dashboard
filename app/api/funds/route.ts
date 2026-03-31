@@ -107,7 +107,7 @@ async function fetchYahooFundData(
   // Use 3mo history for the chart
   let history: HistoricalPoint[] = [];
   try {
-    const pts = await fetchHistory(fund.ticker, "3mo", 3600);
+    const pts = await fetchHistory(fund.ticker, "3mo");
     history = pts.map((p) => ({ date: p.date, close: p.close }));
   } catch {
     // non-fatal

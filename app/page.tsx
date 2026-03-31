@@ -307,7 +307,7 @@ export default function Home() {
                 label="Latest News"
                 sub={`${activeSectorConfig?.name} · Broad market · Portfolio companies`}
               />
-              <NewsSection news={data.news} />
+              <NewsSection news={data.news} sectorName={activeSectorConfig?.name} />
             </section>
           </>
         )}

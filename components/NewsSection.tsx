@@ -82,14 +82,15 @@ function NewsPanel({ title, accentColor, items }: PanelProps) {
 
 interface Props {
   news: { market: NewsItem[]; sector: NewsItem[]; portfolio: NewsItem[] };
+  sectorName?: string;
 }
 
-export function NewsSection({ news }: Props) {
+export function NewsSection({ news, sectorName = "Sector" }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <NewsPanel title="Broad Market"        accentColor="#3b82f6" items={news.market} />
-      <NewsPanel title="Financial Sector"    accentColor="#f59e0b" items={news.sector} />
-      <NewsPanel title="Portfolio Companies" accentColor="#818cf8" items={news.portfolio} />
+      <NewsPanel title="Broad Market"                accentColor="#3b82f6" items={news.market} />
+      <NewsPanel title={`${sectorName} Sector`}      accentColor="#f59e0b" items={news.sector} />
+      <NewsPanel title="Portfolio Companies"         accentColor="#818cf8" items={news.portfolio} />
     </div>
   );
 }
