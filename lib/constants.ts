@@ -176,22 +176,6 @@ export const FUNDS: FundConfig[] = [
   },
 ];
 
-// News queries per sector
-export const SECTOR_NEWS: Record<string, { sector: string; portfolio: string[] }> = {
-  financials: {
-    sector: "banks insurance payments fintech credit capital markets",
-    portfolio: ["JPM", "V", "MA", "PYPL", "GS", "BAC", "MS", "AXP", "WFC", "FISV"],
-  },
-  technology: {
-    sector: "artificial intelligence semiconductors cloud software big tech",
-    portfolio: ["NVDA", "MSFT", "META", "GOOGL", "AMZN", "AMD", "AVGO", "PLTR", "CRM", "ORCL"],
-  },
-  healthcare: {
-    sector: "pharmaceuticals biotech FDA approval clinical trial drug medical devices",
-    portfolio: ["LLY", "ISRG", "REGN", "MRNA", "DXCM", "NVO", "UNH", "ABBV", "TMO", "BSX"],
-  },
-};
-
 // Yahoo Finance ticker formats:
 //   forex  → "EURUSD=X"   (=X suffix required)
 //   crypto → "BTC-USD"    (hyphen, not no separator)

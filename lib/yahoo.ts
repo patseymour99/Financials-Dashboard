@@ -3,14 +3,14 @@
  * Uses the same endpoints as finance.yahoo.com — no API key required.
  *
  * Endpoints used:
- *   v7/finance/quote        — batch real-time quotes
- *   v8/finance/chart/{sym}  — OHLCV history
- *   v1/finance/search       — news search
+ *   v7/finance/quote        — batch real-time quotes        (needs crumb)
+ *   v8/finance/chart/{sym}  — OHLCV history                (needs crumb)
+ *   RSS feeds               — news per ticker/ETF           (NO auth needed)
  *
- * Yahoo Finance requires a crumb token (+ matching session cookies) for API calls.
- * We cache the crumb at module scope so warm serverless lambdas reuse it.
+ * Yahoo Finance requires a crumb token (+ matching session cookies) for the
+ * data APIs. The RSS feeds at feeds.finance.yahoo.com are fully public.
  *
- * NOTE: All Yahoo Finance fetch() calls use cache: 'no-store'.
+ * NOTE: All fetch() calls use cache: 'no-store'.
  * Using next: { revalidate: N } would cause Next.js to cache a failed/empty
  * response and serve stale empty data for hours — exactly what we don't want.
  */
@@ -143,8 +143,6 @@ export interface YFNewsItem {
   link: string;
   publisher: string;
   providerPublishTime: number; // unix seconds
-  thumbnail?: { resolutions?: { url: string }[] };
-  relatedTickers?: string[];
 }
 
 // ── Quote ──────────────────────────────────────────────────────────────────
@@ -240,34 +238,70 @@ export async function fetchHistory(
   }
 }
 
-// ── News ───────────────────────────────────────────────────────────────────
+// ── News (RSS — no auth required) ─────────────────────────────────────────
+
+const RSS_BASE = "https://feeds.finance.yahoo.com/rss/2.0/headline";
+const RSS_HEADERS: HeadersInit = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  Accept: "application/rss+xml, application/xml, text/xml, */*",
+};
+
+function extractTag(xml: string, tag: string): string {
+  const m = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`));
+  return m ? m[1] : "";
+}
+
+function stripCDATA(s: string): string {
+  const m = s.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+  return (m ? m[1] : s).trim();
+}
+
+function parseRSS(xml: string, limit: number): YFNewsItem[] {
+  const items: YFNewsItem[] = [];
+  const re = /<item>([\s\S]*?)<\/item>/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(xml)) !== null && items.length < limit) {
+    const chunk = m[1];
+    const title  = stripCDATA(extractTag(chunk, "title"));
+    const link   = stripCDATA(extractTag(chunk, "link"));
+    const pubDate = extractTag(chunk, "pubDate");
+    // <source> may carry the publisher name
+    const source = stripCDATA(extractTag(chunk, "source")) || "Yahoo Finance";
+
+    if (!title || !link) continue;
+
+    items.push({
+      uuid: link,
+      title,
+      link,
+      publisher: source,
+      providerPublishTime: pubDate
+        ? Math.floor(new Date(pubDate).getTime() / 1000)
+        : 0,
+    });
+  }
+
+  return items;
+}
 
 /**
- * Search Yahoo Finance for news stories matching `query`.
- * Pass a ticker symbol for company-specific news, or a phrase for general search.
+ * Fetch news for a Yahoo Finance ticker via the public RSS feed.
+ * No crumb or cookies required — works reliably from serverless.
  */
-export async function fetchNews(
-  query: string,
-  count = 10
+export async function fetchRSSNews(
+  ticker: string,
+  count = 8
 ): Promise<YFNewsItem[]> {
-  const auth = await getCrumb();
-  const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : "";
-
-  const url =
-    `${Q1}/v1/finance/search?q=${encodeURIComponent(query)}` +
-    `&newsCount=${count}&quotesCount=0&enableFuzzyQuery=false${crumbParam}`;
-
+  const url = `${RSS_BASE}?s=${encodeURIComponent(ticker)}&region=US&lang=en-US`;
   try {
-    const res = await fetch(url, {
-      headers: authHeaders(auth?.cookies),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`Yahoo news HTTP ${res.status}`);
-    const json = await res.json();
-    return json?.news ?? [];
+    const res = await fetch(url, { headers: RSS_HEADERS, cache: "no-store" });
+    if (!res.ok) throw new Error(`RSS ${res.status} for ${ticker}`);
+    return parseRSS(await res.text(), count);
   } catch (err) {
-    console.error(`Yahoo fetchNews("${query}") error:`, err);
-    _crumbCache = null;
+    console.error(`fetchRSSNews(${ticker}) error:`, err);
     return [];
   }
 }

@@ -1,23 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchNews, YFNewsItem } from "@/lib/yahoo";
-import { SECTOR_NEWS } from "@/lib/constants";
+import { fetchRSSNews, YFNewsItem } from "@/lib/yahoo";
 import { NewsItem, Sector } from "@/lib/types";
 
-function mapNewsItem(item: YFNewsItem, idx: number): NewsItem {
+// Sector ETF tickers used as RSS news proxies for each sector.
+// XLF / XLK / XLV are the SPDR sector ETFs — their RSS feeds surface
+// sector-specific stories without any auth.
+const SECTOR_ETF: Record<Sector, string[]> = {
+  financials: ["XLF", "KBE"],       // Financials + Banks
+  technology: ["XLK", "SOXX"],      // Tech + Semiconductors
+  healthcare: ["XLV", "IBB"],       // Healthcare + Biotech
+};
+
+// Per-sector holding tickers for the Portfolio Companies panel.
+// These should match the top holdings across both funds in each sector.
+const PORTFOLIO_TICKERS: Record<Sector, string[]> = {
+  financials: ["JPM", "V", "MA", "PYPL", "GS", "BAC", "MS", "AXP"],
+  technology: ["NVDA", "MSFT", "META", "GOOGL", "AMZN", "AMD", "AVGO", "PLTR"],
+  healthcare: ["LLY", "ISRG", "REGN", "MRNA", "DXCM", "NVO", "UNH", "ABBV"],
+};
+
+// Broad-market tickers: S&P 500 + Nasdaq + global markets ETF
+const MARKET_TICKERS = ["SPY", "QQQ", "VT"];
+
+function mapItem(item: YFNewsItem): NewsItem {
   return {
-    uuid: item.uuid || `${item.providerPublishTime}-${idx}`,
+    uuid: item.uuid,
     title: item.title,
     link: item.link,
     publisher: item.publisher,
     publishedAt: item.providerPublishTime
       ? new Date(item.providerPublishTime * 1000).toISOString()
       : new Date().toISOString(),
-    thumbnail: item.thumbnail?.resolutions?.[0]?.url,
-    relatedTickers: item.relatedTickers,
   };
 }
 
-function dedupe(items: NewsItem[], seen: Set<string> = new Set()): NewsItem[] {
+function dedupe(items: NewsItem[], seen: Set<string>): NewsItem[] {
   return items.filter(({ link, uuid }) => {
     const key = link || uuid;
     if (seen.has(key)) return false;
@@ -31,40 +48,40 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const sector = (searchParams.get("sector") as Sector | null) ?? "financials";
 
-    const sectorQueries = SECTOR_NEWS[sector] ?? SECTOR_NEWS.financials;
+    const sectorEtfs   = SECTOR_ETF[sector]       ?? SECTOR_ETF.financials;
+    const portfolioTkr = PORTFOLIO_TICKERS[sector] ?? PORTFOLIO_TICKERS.financials;
 
-    // Fetch broad market, sector-specific, and per-ticker holding news in parallel.
-    // Portfolio tickers come directly from the sector's SECTOR_NEWS list so they
-    // are guaranteed to be holdings of that sector's funds only.
-    const portfolioTickers = sectorQueries.portfolio.slice(0, 8);
+    // Fetch all RSS feeds in parallel
+    const allTickers = [...MARKET_TICKERS, ...sectorEtfs, ...portfolioTkr];
+    const results = await Promise.allSettled(
+      allTickers.map((t) => fetchRSSNews(t, 6))
+    );
 
-    const [marketRes, sectorRes, ...portfolioRes] = await Promise.allSettled([
-      fetchNews("global stock market equities today", 12),
-      fetchNews(sectorQueries.sector, 12),
-      ...portfolioTickers.map((t) => fetchNews(t, 3)),
-    ]);
+    const byTicker = new Map<string, YFNewsItem[]>();
+    allTickers.forEach((t, i) => {
+      byTicker.set(
+        t,
+        results[i].status === "fulfilled"
+          ? (results[i] as PromiseFulfilledResult<YFNewsItem[]>).value
+          : []
+      );
+    });
 
     // Use a shared seen-set so no story appears in more than one panel
     const globalSeen = new Set<string>();
 
     const market = dedupe(
-      (marketRes.status === "fulfilled" ? marketRes.value : []).map(mapNewsItem),
+      MARKET_TICKERS.flatMap((t) => byTicker.get(t)!.map(mapItem)),
       globalSeen
-    );
+    ).slice(0, 12);
 
     const sectorNews = dedupe(
-      (sectorRes.status === "fulfilled" ? sectorRes.value : []).map(mapNewsItem),
+      sectorEtfs.flatMap((t) => byTicker.get(t)!.map(mapItem)),
       globalSeen
-    );
+    ).slice(0, 12);
 
     const portfolio = dedupe(
-      portfolioRes
-        .filter((r) => r.status === "fulfilled")
-        .flatMap((r, i) =>
-          (r as PromiseFulfilledResult<YFNewsItem[]>).value.map((n, j) =>
-            mapNewsItem(n, i * 10 + j)
-          )
-        ),
+      portfolioTkr.flatMap((t) => byTicker.get(t)!.map(mapItem)),
       globalSeen
     ).slice(0, 16);
 
