@@ -57,9 +57,7 @@ export const FUNDS: FundConfig[] = [
     name: "iShares FinTech Active ETF",
     shortName: "iShares FinTech",
     ticker: "BPAY",
-    dataSource: "blackrock",
-    blackrockProductId: "329128",
-    blackrockRegion: "us",
+    dataSource: "yahoo",
     currency: "USD",
     description:
       "iShares FinTech Active ETF (BPAY) — actively managed exposure to companies driving financial technology innovation. NYSE Arca.",
