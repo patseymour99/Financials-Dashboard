@@ -27,13 +27,9 @@ export const FUNDS: FundConfig[] = [
     id: "bgf-world-financials",
     name: "BGF World Financials Fund",
     shortName: "BGF World Financials",
-    ticker: "BGF-WFIN",
-    isin: "LU0106831901", // A2 USD share class
-    dataSource: "blackrock",
-    // Override with BGF_PRODUCT_ID env var to switch share class:
-    //   A2 EUR: 229935  |  A2 USD: 229936  |  D2 USD: 229939
-    blackrockProductId: process.env.BGF_PRODUCT_ID || "229936",
-    blackrockRegion: "uk",
+    ticker: "0P00000AWJ", // Yahoo Finance ticker for A2 USD share class
+    isin: "LU0106831901",
+    dataSource: "yahoo",
     currency: "USD",
     description:
       "BlackRock Global Funds World Financials Fund — actively managed exposure to global financial sector equities.",
@@ -82,14 +78,9 @@ export const FUNDS: FundConfig[] = [
     id: "bgf-world-technology",
     name: "BGF World Technology Fund",
     shortName: "BGF World Technology",
-    ticker: "BGF-WTECH",
-    // ISIN: LU0171307173 (A2 USD share class)
+    ticker: "0P00000AWU", // Yahoo Finance ticker for A2 USD share class
     isin: "LU0171307173",
-    dataSource: "blackrock",
-    // Set BGF_TECH_PRODUCT_ID env var with the correct BlackRock product ID.
-    // Visit blackrock.com/uk → Products → search "BGF World Technology" to find it.
-    blackrockProductId: process.env.BGF_TECH_PRODUCT_ID || "229979",
-    blackrockRegion: "uk",
+    dataSource: "yahoo",
     currency: "USD",
     description:
       "BlackRock Global Funds World Technology Fund — actively managed exposure to global technology sector equities.",
@@ -138,13 +129,9 @@ export const FUNDS: FundConfig[] = [
     id: "bgf-world-healthscience",
     name: "BGF World Healthscience Fund",
     shortName: "BGF World Healthscience",
-    ticker: "BGF-WHLT",
-    isin: "LU0171307068", // A2 USD share class
-    dataSource: "blackrock",
-    // Set BGF_HEALTH_PRODUCT_ID env var with the correct BlackRock product ID.
-    // Visit blackrock.com/uk → Products → search "BGF World Healthscience" to find it.
-    blackrockProductId: process.env.BGF_HEALTH_PRODUCT_ID || "229937",
-    blackrockRegion: "uk",
+    ticker: "0P00000K03", // Yahoo Finance ticker for A2 USD share class
+    isin: "LU0171307068",
+    dataSource: "yahoo",
     currency: "USD",
     description:
       "BlackRock Global Funds World Healthscience Fund — actively managed exposure to global healthcare and life sciences equities.",

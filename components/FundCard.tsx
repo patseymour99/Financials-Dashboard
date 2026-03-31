@@ -40,7 +40,7 @@ export function FundCard({ data }: Props) {
 
   const sourceLabel = isYahoo ? "Yahoo Finance" : "BlackRock";
   const dataDetail  = isYahoo
-    ? `NYSE Arca · ${fund.ticker}`
+    ? isUcits ? `Yahoo · ${fund.ticker}` : `NYSE Arca · ${fund.ticker}`
     : `BlackRock #${fund.blackrockProductId}`;
   const exchangeLabel = isUcits ? "UCITS / Luxembourg" : "NYSE Arca";
   const priceLabel    = isYahoo ? "Price" : "NAV";
