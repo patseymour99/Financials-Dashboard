@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchQuotes, YFQuote } from "@/lib/yahoo";
+import { fetchQuotes, fetchHistory, YFQuote } from "@/lib/yahoo";
 import { FUNDS, MARKET_INDICES } from "@/lib/constants";
 import {
   FundConfig,
@@ -10,17 +10,17 @@ import {
   FundData,
 } from "@/lib/types";
 
-// ── BlackRock NAV (unchanged — Yahoo doesn't carry UCITS/active ETF NAVs) ──
+// ── BlackRock NAV ─────────────────────────────────────────────────────────
 
-interface BlackRockProductData {
+interface FundResult {
   quote: FundQuote | null;
   history: HistoricalPoint[];
 }
 
-async function fetchBlackRockProductData(
-  fund: FundConfig
-): Promise<BlackRockProductData> {
+async function fetchBlackRockProductData(fund: FundConfig): Promise<FundResult> {
   const { blackrockProductId, blackrockRegion, name, ticker, currency } = fund;
+  if (!blackrockProductId) return { quote: null, history: [] };
+
   const refererBase =
     blackrockRegion === "us"
       ? "https://www.blackrock.com/us/individual/products"
@@ -93,6 +93,48 @@ async function fetchBlackRockProductData(
   }
 }
 
+// ── Yahoo-sourced fund (US ETFs with live exchange price) ─────────────────
+
+async function fetchYahooFundData(
+  fund: FundConfig,
+  quotes: Map<string, YFQuote>
+): Promise<FundResult> {
+  const q = quotes.get(fund.ticker);
+  if (!q || !q.regularMarketPrice) {
+    return { quote: null, history: [] };
+  }
+
+  // Use 3mo history for the chart
+  let history: HistoricalPoint[] = [];
+  try {
+    const pts = await fetchHistory(fund.ticker, "3mo", 3600);
+    history = pts.map((p) => ({ date: p.date, close: p.close }));
+  } catch {
+    // non-fatal
+  }
+
+  const price = q.regularMarketPrice;
+  const prev  = q.regularMarketPreviousClose ?? price;
+
+  return {
+    quote: {
+      ticker: fund.ticker,
+      name: q.longName || q.shortName || fund.name,
+      price,
+      change: q.regularMarketChange ?? 0,
+      changePercent: q.regularMarketChangePercent ?? 0,
+      previousClose: prev,
+      open: q.regularMarketOpen ?? price,
+      dayHigh: q.regularMarketDayHigh ?? price,
+      dayLow: q.regularMarketDayLow ?? price,
+      volume: q.regularMarketVolume ?? 0,
+      currency: q.currency ?? fund.currency,
+      exchange: q.fullExchangeName ?? "NYSE Arca",
+    },
+    history,
+  };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function yfToHolding(
@@ -135,32 +177,54 @@ export async function GET() {
     const holdingTickers = [
       ...new Set(FUNDS.flatMap((f) => f.holdings.map((h) => h.ticker))),
     ];
+    // Also include Yahoo-sourced ETF tickers for fund price lookup
+    const yahooFundTickers = FUNDS
+      .filter((f) => (f.dataSource ?? "blackrock") === "yahoo")
+      .map((f) => f.ticker);
+
     const indexTickers = MARKET_INDICES.map((i) => i.ticker);
 
-    // One Yahoo batch quote call + one BlackRock call per fund — all parallel
+    // One batch Yahoo quote call + one data call per fund — all parallel
+    const blackrockFunds = FUNDS.filter((f) => (f.dataSource ?? "blackrock") === "blackrock");
     const [quotesResult, ...fundResults] = await Promise.allSettled([
-      fetchQuotes([...holdingTickers, ...indexTickers]),
-      ...FUNDS.map((f) => fetchBlackRockProductData(f)),
+      fetchQuotes([...holdingTickers, ...yahooFundTickers, ...indexTickers]),
+      ...blackrockFunds.map((f) => fetchBlackRockProductData(f)),
     ]);
 
     const quotes: Map<string, YFQuote> =
       quotesResult.status === "fulfilled" ? quotesResult.value : new Map();
 
-    const fundsData: FundData[] = FUNDS.map((fund, i) => {
-      const br =
-        fundResults[i].status === "fulfilled"
-          ? (fundResults[i] as PromiseFulfilledResult<BlackRockProductData>).value
-          : ({ quote: null, history: [] } as BlackRockProductData);
+    // Map BlackRock results back to their fund index
+    const brResultsByFundId = new Map<string, FundResult>();
+    blackrockFunds.forEach((fund, i) => {
+      const r = fundResults[i];
+      brResultsByFundId.set(
+        fund.id,
+        r.status === "fulfilled"
+          ? (r as PromiseFulfilledResult<FundResult>).value
+          : { quote: null, history: [] }
+      );
+    });
+
+    // Build FundData for each fund (BlackRock or Yahoo)
+    const fundDataPromises = FUNDS.map(async (fund): Promise<FundData> => {
+      const source = fund.dataSource ?? "blackrock";
+      const result: FundResult =
+        source === "yahoo"
+          ? await fetchYahooFundData(fund, quotes)
+          : (brResultsByFundId.get(fund.id) ?? { quote: null, history: [] });
 
       return {
         fund,
-        quote: br.quote,
-        history: br.history,
+        quote: result.quote,
+        history: result.history,
         holdings: fund.holdings.map((h) =>
           yfToHolding(h.ticker, h.name, h.weight, quotes)
         ),
       };
     });
+
+    const fundsData: FundData[] = await Promise.all(fundDataPromises);
 
     const indices: MarketIndex[] = MARKET_INDICES.map((idx) => {
       const q = quotes.get(idx.ticker);

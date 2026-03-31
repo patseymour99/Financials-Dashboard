@@ -28,14 +28,22 @@ function ChartTooltip({ active, payload, label }: any) {
 
 export function FundCard({ data }: Props) {
   const { fund, quote, history } = data;
-  const isUcits = !!fund.isin;
-  const isUp = (quote?.changePercent ?? 0) >= 0;
+  const isUcits    = !!fund.isin;
+  const isYahoo    = (fund.dataSource ?? "blackrock") === "yahoo";
+  const isUp       = (quote?.changePercent ?? 0) >= 0;
   const chartColor = isUp ? "#22c55e" : "#ef4444";
 
   const chartData = history.slice(-90);
   const prices = chartData.map((d) => d.close).filter((v) => v > 0);
   const minVal = prices.length ? Math.min(...prices) * 0.993 : 0;
   const maxVal = prices.length ? Math.max(...prices) * 1.007 : 1;
+
+  const sourceLabel = isYahoo ? "Yahoo Finance" : "BlackRock";
+  const dataDetail  = isYahoo
+    ? `NYSE Arca · ${fund.ticker}`
+    : `BlackRock #${fund.blackrockProductId}`;
+  const exchangeLabel = isUcits ? "UCITS / Luxembourg" : "NYSE Arca";
+  const priceLabel    = isYahoo ? "Price" : "NAV";
 
   return (
     <div
@@ -65,11 +73,11 @@ export function FundCard({ data }: Props) {
             className="shrink-0 text-xs font-medium px-2 py-0.5 rounded border"
             style={{ color: "var(--text-3)", borderColor: "var(--border-2)", background: "var(--surface-2)" }}
           >
-            BlackRock
+            {sourceLabel}
           </span>
         </div>
 
-        {/* NAV */}
+        {/* Price / NAV */}
         {quote && quote.price > 0 ? (
           <div className="flex items-end justify-between gap-4">
             <div>
@@ -94,7 +102,7 @@ export function FundCard({ data }: Props) {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xs" style={{ color: "var(--text-3)" }}>Prev NAV</p>
+              <p className="text-xs" style={{ color: "var(--text-3)" }}>Prev {priceLabel}</p>
               <p className="text-sm font-medium tabnum" style={{ color: "var(--text-2)" }}>
                 {quote.previousClose.toFixed(2)}
               </p>
@@ -111,11 +119,15 @@ export function FundCard({ data }: Props) {
         ) : (
           <div className="flex items-center gap-2 text-sm py-2" style={{ color: "var(--amber)" }}>
             <span>⚠</span>
-            <span>NAV unavailable — BlackRock product {fund.blackrockProductId}</span>
+            <span>
+              {isYahoo
+                ? `Live price unavailable — ${fund.ticker}`
+                : `NAV unavailable — BlackRock product ${fund.blackrockProductId}`}
+            </span>
           </div>
         )}
 
-        {/* 90-day NAV chart */}
+        {/* 90-day chart */}
         {chartData.length > 1 ? (
           <div className="h-24 -mx-1">
             <ResponsiveContainer width="100%" height="100%">
@@ -136,7 +148,7 @@ export function FundCard({ data }: Props) {
           </div>
         ) : (
           <div className="h-24 flex items-center justify-center text-xs" style={{ color: "var(--text-3)" }}>
-            Loading NAV history…
+            Loading price history…
           </div>
         )}
       </div>
@@ -147,8 +159,8 @@ export function FundCard({ data }: Props) {
         style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
       >
         {[
-          { label: "Exchange", value: isUcits ? "UCITS / Luxembourg" : "NYSE Arca" },
-          { label: "Data source", value: `BlackRock #${fund.blackrockProductId}` },
+          { label: "Exchange", value: exchangeLabel },
+          { label: "Data source", value: dataDetail },
         ].map(({ label, value }) => (
           <div key={label} className="px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
             <p className="text-xs" style={{ color: "var(--text-3)" }}>{label}</p>

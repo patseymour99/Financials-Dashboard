@@ -1,3 +1,12 @@
+export type Sector = "financials" | "technology" | "healthcare";
+
+export interface SectorConfig {
+  id: Sector;
+  name: string;
+  color: string;
+  description: string;
+}
+
 export interface HoldingConfig {
   ticker: string;
   name: string;
@@ -10,11 +19,14 @@ export interface FundConfig {
   shortName: string;
   ticker: string;
   isin?: string;
-  blackrockProductId: string;
-  blackrockRegion: "uk" | "us";
+  /** "blackrock" = use performanceChart.json; "yahoo" = use Yahoo Finance quotes */
+  dataSource?: "blackrock" | "yahoo";
+  blackrockProductId?: string;
+  blackrockRegion?: "uk" | "us";
   currency: string;
   description: string;
   color: string;
+  sector: Sector;
   holdings: HoldingConfig[];
 }
 

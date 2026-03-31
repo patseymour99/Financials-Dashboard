@@ -21,7 +21,7 @@ function formatFundSummary(fundData: FundData[]): string {
         .map((h) => `  - ${h.name} (${h.ticker}): $${fmt(h.price)} ${pct(h.changePercent)}`)
         .join("\n");
       return `${fd.fund.name}:
-  NAV: ${q.currency} ${fmt(q.price)} | Change: ${pct(q.changePercent)} (${q.change >= 0 ? "+" : ""}${fmt(q.change)}) | As of: ${q.navDate ?? "today"}
+  Price: ${q.currency} ${fmt(q.price)} | Change: ${pct(q.changePercent)} (${q.change >= 0 ? "+" : ""}${fmt(q.change)}) | As of: ${q.navDate ?? "today"}
   Top Holdings:\n${top5}`;
     })
     .join("\n\n");
@@ -57,9 +57,17 @@ function buildPrompt(data: BriefingRequest): string {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
+  // Dynamically describe the funds from the data
+  const fundDescriptions = data.fundData
+    .map((fd, i) =>
+      `${i + 1}. ${fd.fund.name} — ${fd.fund.description}`
+    )
+    .join("\n");
+
+  const fundNames = data.fundData.map((fd) => fd.fund.shortName).join(" · ");
+
   return `You are a senior portfolio analyst preparing a morning briefing for a fund manager covering:
-1. BGF World Financials Fund — global financials equity (UCITS)
-2. iShares FinTech Active ETF (BPAY) — actively managed fintech (NYSE Arca)
+${fundDescriptions}
 
 Today is ${today}. Be concise, insightful, and directly actionable.
 
@@ -70,13 +78,13 @@ ${formatIndices(data.indices)}
 ${"Asset".padEnd(16)} ${"Price".padEnd(12)} ${"Day".padEnd(10)} ${"MTD".padEnd(10)} YTD
 ${formatMetrics(data.metrics)}
 
-=== FUND NAVs ===
+=== FUND PRICES / NAVs ===
 ${formatFundSummary(data.fundData)}
 
 === NEWS ===
 ${formatNewsSection(data.news.market, "Broad Market")}
 
-${formatNewsSection(data.news.sector, "Financial Sector")}
+${formatNewsSection(data.news.sector, "Sector")}
 
 ${formatNewsSection(data.news.portfolio, "Portfolio Companies")}
 
@@ -88,19 +96,19 @@ ${formatNewsSection(data.news.portfolio, "Portfolio Companies")}
 (2–3 sentences — the single most important thing to know right now)
 
 ### Market Conditions
-(Key macro themes, rate/yield moves, risk sentiment affecting financials & fintech)
+(Key macro themes, rate/yield moves, risk sentiment)
 
-### BGF World Financials — Update
-(NAV context, sector drivers, holdings of note, risk factors)
+### ${data.fundData[0]?.fund.shortName ?? "Fund 1"} — Update
+(Price/NAV context, sector drivers, holdings of note, risk factors)
 
-### iShares FinTech Active ETF (BPAY) — Update
-(NAV context, fintech themes, holdings of note, risk factors)
+### ${data.fundData[1]?.fund.shortName ?? "Fund 2"} — Update
+(Price/NAV context, sector themes, holdings of note, risk factors)
 
 ### Performance Context
 (How MTD/YTD numbers compare to broad market; any notable divergence)
 
 ### Key News & Themes
-(Top 3–4 stories with direct implications for these funds)
+(Top 3–4 stories with direct implications for these funds: ${fundNames})
 
 ### Portfolio Companies in Focus
 (Any notable moves, earnings, or news from holdings worth acting on)

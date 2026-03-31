@@ -7,7 +7,8 @@ import { HoldingsTable } from "@/components/HoldingsTable";
 import { NewsSection } from "@/components/NewsSection";
 import { AIBriefing } from "@/components/AIBriefing";
 import { PerformanceMetrics } from "@/components/PerformanceMetrics";
-import { DashboardData, BriefingRequest, MetricAsset } from "@/lib/types";
+import { DashboardData, BriefingRequest, MetricAsset, Sector, FundData } from "@/lib/types";
+import { SECTORS } from "@/lib/constants";
 import { format } from "date-fns";
 
 const REFRESH_MS = 15 * 60 * 1000;
@@ -29,6 +30,46 @@ function SectionHeading({ label, sub }: { label: string; sub?: string }) {
   );
 }
 
+interface SectorTabsProps {
+  activeSector: Sector;
+  onChange: (s: Sector) => void;
+}
+
+function SectorTabs({ activeSector, onChange }: SectorTabsProps) {
+  return (
+    <div
+      className="sticky top-[52px] z-40 border-b"
+      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+    >
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex gap-0">
+          {SECTORS.map((sector) => {
+            const isActive = activeSector === sector.id;
+            return (
+              <button
+                key={sector.id}
+                onClick={() => onChange(sector.id)}
+                className="relative flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors"
+                style={{
+                  color: isActive ? "var(--text-1)" : "var(--text-3)",
+                  borderBottom: isActive ? `2px solid ${sector.color}` : "2px solid transparent",
+                  marginBottom: "-1px",
+                }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: isActive ? sector.color : "var(--border-2)" }}
+                />
+                {sector.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [data, setData]             = useState<DashboardData | null>(null);
   const [metrics, setMetrics]       = useState<MetricAsset[]>([]);
@@ -36,6 +77,7 @@ export default function Home() {
   const [error, setError]           = useState("");
   const [lastRefreshed, setLast]    = useState<Date | null>(null);
   const [marketOpen, setMarketOpen] = useState<"pre" | "open" | "closed">("closed");
+  const [activeSector, setActiveSector] = useState<Sector>("financials");
 
   // Determine US market status
   useEffect(() => {
@@ -54,12 +96,12 @@ export default function Home() {
     return () => clearInterval(t);
   }, []);
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (sector: Sector = "financials") => {
     setLoading(true); setError("");
     try {
       const [fundsRes, newsRes, metricsRes] = await Promise.allSettled([
         fetch("/api/funds"),
-        fetch("/api/news"),
+        fetch(`/api/news?sector=${sector}`),
         fetch("/api/metrics"),
       ]);
 
@@ -83,14 +125,40 @@ export default function Home() {
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
-    fetchAll();
-    const t = setInterval(fetchAll, REFRESH_MS);
+    fetchAll(activeSector);
+    const t = setInterval(() => fetchAll(activeSector), REFRESH_MS);
     return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchAll]);
 
+  // Re-fetch news when sector tab changes
+  const handleSectorChange = useCallback(async (sector: Sector) => {
+    setActiveSector(sector);
+    // Only re-fetch news (fast) — fund/metrics data is sector-agnostic
+    try {
+      const newsRes = await fetch(`/api/news?sector=${sector}`);
+      if (newsRes.ok) {
+        const news = await newsRes.json();
+        setData((prev) =>
+          prev ? { ...prev, news } : prev
+        );
+      }
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
+  // Filter funds for the active sector
+  const sectorFunds: FundData[] = (data?.funds ?? []).filter(
+    (fd) => fd.fund.sector === activeSector
+  );
+
+  const activeSectorConfig = SECTORS.find((s) => s.id === activeSector);
+
   const briefingReq: BriefingRequest | null = data
-    ? { fundData: data.funds, indices: data.indices, metrics, news: data.news }
+    ? { fundData: sectorFunds, indices: data.indices, metrics, news: data.news }
     : null;
 
   const statusColor = marketOpen === "open" ? "var(--green)" : marketOpen === "pre" ? "var(--amber)" : "var(--text-3)";
@@ -117,7 +185,7 @@ export default function Home() {
               Financials Dashboard
             </p>
             <p className="text-xs leading-none mt-0.5" style={{ color: "var(--text-3)" }}>
-              BGF World Financials · iShares FinTech
+              {activeSectorConfig?.description ?? "Sector Equity Coverage"}
             </p>
           </div>
         </div>
@@ -145,7 +213,7 @@ export default function Home() {
 
           {/* Refresh */}
           <button
-            onClick={fetchAll}
+            onClick={() => fetchAll(activeSector)}
             disabled={loading}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-colors disabled:opacity-50"
             style={{
@@ -162,6 +230,9 @@ export default function Home() {
 
       {/* ── Ticker bar ──────────────────────────────────────────── */}
       {data?.indices && <MarketBar indices={data.indices} />}
+
+      {/* ── Sector tabs ─────────────────────────────────────────── */}
+      <SectorTabs activeSector={activeSector} onChange={handleSectorChange} />
 
       {/* ── Main content ────────────────────────────────────────── */}
       <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
@@ -188,16 +259,31 @@ export default function Home() {
           <>
             {/* ── 1. AI Morning Briefing (TOP) ── */}
             <section>
-              <SectionHeading label="AI Morning Briefing" sub="Claude · Updated on demand" />
+              <SectionHeading
+                label="AI Morning Briefing"
+                sub={`Claude · ${activeSectorConfig?.name ?? ""} Sector`}
+              />
               <AIBriefing data={briefingReq} />
             </section>
 
             {/* ── 2. Fund Overview ── */}
             <section>
-              <SectionHeading label="Fund Overview" sub="Daily NAV from BlackRock" />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {data.funds.map((fd) => <FundCard key={fd.fund.id} data={fd} />)}
-              </div>
+              <SectionHeading
+                label="Fund Overview"
+                sub={`${activeSectorConfig?.name} Sector · ${sectorFunds.length} fund${sectorFunds.length !== 1 ? "s" : ""}`}
+              />
+              {sectorFunds.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {sectorFunds.map((fd) => <FundCard key={fd.fund.id} data={fd} />)}
+                </div>
+              ) : (
+                <div
+                  className="rounded-xl border flex items-center justify-center py-16 text-sm"
+                  style={{ borderColor: "var(--border)", color: "var(--text-3)" }}
+                >
+                  No funds configured for the {activeSectorConfig?.name} sector
+                </div>
+              )}
             </section>
 
             {/* ── 3. Market Performance ── */}
@@ -208,15 +294,18 @@ export default function Home() {
 
             {/* ── 4. Holdings ── */}
             <section>
-              <SectionHeading label="Portfolio Holdings" sub="Live quotes via FMP" />
-              {data.funds.length > 0 && <HoldingsTable funds={data.funds} />}
+              <SectionHeading
+                label="Portfolio Holdings"
+                sub={`${activeSectorConfig?.name} sector · Live quotes via Yahoo Finance`}
+              />
+              {sectorFunds.length > 0 && <HoldingsTable funds={sectorFunds} />}
             </section>
 
             {/* ── 5. News ── */}
             <section>
               <SectionHeading
                 label="Latest News"
-                sub="Broad market · Financial sector · Portfolio companies"
+                sub={`${activeSectorConfig?.name} · Broad market · Portfolio companies`}
               />
               <NewsSection news={data.news} />
             </section>
@@ -225,7 +314,7 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="pt-2 pb-4 flex items-center justify-between text-xs" style={{ color: "var(--text-3)" }}>
-          <span>NAV data via BlackRock · Market data via FMP · AI via Claude</span>
+          <span>NAV data via BlackRock · Market data via Yahoo Finance · AI via Claude</span>
           <span>Auto-refreshes every 15 min</span>
         </footer>
       </main>
