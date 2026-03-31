@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchNews, YFNewsItem } from "@/lib/yahoo";
-import { FUNDS, SECTOR_NEWS } from "@/lib/constants";
+import { SECTOR_NEWS } from "@/lib/constants";
 import { NewsItem, Sector } from "@/lib/types";
 
 function mapNewsItem(item: YFNewsItem, idx: number): NewsItem {
@@ -17,8 +17,7 @@ function mapNewsItem(item: YFNewsItem, idx: number): NewsItem {
   };
 }
 
-function dedupe(items: NewsItem[]): NewsItem[] {
-  const seen = new Set<string>();
+function dedupe(items: NewsItem[], seen: Set<string> = new Set()): NewsItem[] {
   return items.filter(({ link, uuid }) => {
     const key = link || uuid;
     if (seen.has(key)) return false;
@@ -34,32 +33,40 @@ export async function GET(req: NextRequest) {
 
     const sectorQueries = SECTOR_NEWS[sector] ?? SECTOR_NEWS.financials;
 
-    // Unique US-listed holding tickers for the active sector's funds
-    const portfolioTickers = [
-      ...new Set(
-        FUNDS
-          .filter((f) => f.sector === sector)
-          .flatMap((f) =>
-            f.holdings.map((h) => h.ticker).filter((t) => !t.includes("."))
-          )
-      ),
-    ];
+    // Fetch broad market, sector-specific, and per-ticker holding news in parallel.
+    // Portfolio tickers come directly from the sector's SECTOR_NEWS list so they
+    // are guaranteed to be holdings of that sector's funds only.
+    const portfolioTickers = sectorQueries.portfolio.slice(0, 8);
 
     const [marketRes, sectorRes, ...portfolioRes] = await Promise.allSettled([
-      fetchNews("stock market financial news", 12),
+      fetchNews("global stock market equities today", 12),
       fetchNews(sectorQueries.sector, 12),
-      ...portfolioTickers.slice(0, 6).map((t) => fetchNews(t, 4)),
+      ...portfolioTickers.map((t) => fetchNews(t, 3)),
     ]);
 
-    const market    = marketRes.status  === "fulfilled" ? dedupe(marketRes.value.map(mapNewsItem))  : [];
-    const sectorNews = sectorRes.status === "fulfilled" ? dedupe(sectorRes.value.map(mapNewsItem))  : [];
+    // Use a shared seen-set so no story appears in more than one panel
+    const globalSeen = new Set<string>();
+
+    const market = dedupe(
+      (marketRes.status === "fulfilled" ? marketRes.value : []).map(mapNewsItem),
+      globalSeen
+    );
+
+    const sectorNews = dedupe(
+      (sectorRes.status === "fulfilled" ? sectorRes.value : []).map(mapNewsItem),
+      globalSeen
+    );
+
     const portfolio = dedupe(
       portfolioRes
         .filter((r) => r.status === "fulfilled")
         .flatMap((r, i) =>
-          (r as PromiseFulfilledResult<YFNewsItem[]>).value.map((n, j) => mapNewsItem(n, i * 10 + j))
-        )
-    ).slice(0, 14);
+          (r as PromiseFulfilledResult<YFNewsItem[]>).value.map((n, j) =>
+            mapNewsItem(n, i * 10 + j)
+          )
+        ),
+      globalSeen
+    ).slice(0, 16);
 
     return NextResponse.json({
       market,

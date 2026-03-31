@@ -177,18 +177,18 @@ export const FUNDS: FundConfig[] = [
 ];
 
 // News queries per sector
-export const SECTOR_NEWS: Record<string, { sector: string; portfolio: string }> = {
+export const SECTOR_NEWS: Record<string, { sector: string; portfolio: string[] }> = {
   financials: {
-    sector: "financial sector banking fintech payments",
-    portfolio: "JPMorgan Visa Mastercard PayPal fintech banking earnings",
+    sector: "banks insurance payments fintech credit capital markets",
+    portfolio: ["JPM", "V", "MA", "PYPL", "GS", "BAC", "MS", "AXP", "WFC", "FISV"],
   },
   technology: {
-    sector: "artificial intelligence technology sector semiconductors software cloud",
-    portfolio: "NVIDIA Microsoft Meta Alphabet AI chips Palantir Oracle earnings",
+    sector: "artificial intelligence semiconductors cloud software big tech",
+    portfolio: ["NVDA", "MSFT", "META", "GOOGL", "AMZN", "AMD", "AVGO", "PLTR", "CRM", "ORCL"],
   },
   healthcare: {
-    sector: "healthcare innovation biotech genomics medical devices digital health",
-    portfolio: "Eli Lilly Intuitive Surgical Regeneron Moderna DexCom genomics drug approval earnings",
+    sector: "pharmaceuticals biotech FDA approval clinical trial drug medical devices",
+    portfolio: ["LLY", "ISRG", "REGN", "MRNA", "DXCM", "NVO", "UNH", "ABBV", "TMO", "BSX"],
   },
 };
 
