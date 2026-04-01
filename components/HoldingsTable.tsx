@@ -134,6 +134,19 @@ export function HoldingsTable({ funds }: Props) {
           </p>
         )}
       </div>
+
+      {/* Footer */}
+      <div
+        className="px-4 py-2 border-t flex items-center justify-between"
+        style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+      >
+        <span className="text-xs" style={{ color: "var(--text-3)" }}>
+          Prices updated daily via Yahoo Finance
+        </span>
+        <span className="text-xs" style={{ color: "var(--text-3)" }}>
+          Holdings composition from latest fund disclosure · weights indicative
+        </span>
+      </div>
     </div>
   );
 }

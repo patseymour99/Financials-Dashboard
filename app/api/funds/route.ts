@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchQuotes, fetchHistory, YFQuote } from "@/lib/yahoo";
+import { fetchQuotes, fetchHistory, YFHistoricalPoint, YFQuote } from "@/lib/yahoo";
 import { FUNDS, MARKET_INDICES } from "@/lib/constants";
 import {
   FundConfig,
@@ -93,7 +93,22 @@ async function fetchBlackRockProductData(fund: FundConfig): Promise<FundResult> 
   }
 }
 
-// ── Yahoo-sourced fund (US ETFs with live exchange price) ─────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function firstPriceAtOrAfter(
+  history: YFHistoricalPoint[],
+  targetDate: string
+): number | null {
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  return sorted.find((d) => d.date >= targetDate)?.close ?? null;
+}
+
+function pctChange(from: number | null, to: number): number | null {
+  if (!from || from === 0) return null;
+  return ((to - from) / from) * 100;
+}
+
+// ── Yahoo-sourced fund (all funds are now Yahoo-sourced) ──────────────────
 
 async function fetchYahooFundData(
   fund: FundConfig,
@@ -104,17 +119,28 @@ async function fetchYahooFundData(
     return { quote: null, history: [] };
   }
 
-  // Use 3mo history for the chart
-  let history: HistoricalPoint[] = [];
+  // Fetch full YTD history — used for both the chart and MTD/YTD calculations
+  let ytdHistory: YFHistoricalPoint[] = [];
   try {
-    const pts = await fetchHistory(fund.ticker, "3mo");
-    history = pts.map((p) => ({ date: p.date, close: p.close }));
+    ytdHistory = await fetchHistory(fund.ticker, "ytd");
   } catch {
-    // non-fatal
+    // non-fatal — performance metrics will be unavailable
   }
+
+  // Last 90 trading days for the chart
+  const history: HistoricalPoint[] = ytdHistory
+    .slice(-90)
+    .map((p) => ({ date: p.date, close: p.close }));
+
+  const now     = new Date();
+  const ytdStart = `${now.getFullYear()}-01-01`;
+  const mtdStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
   const price = q.regularMarketPrice;
   const prev  = q.regularMarketPreviousClose ?? price;
+  const lastNavDate = ytdHistory.length
+    ? ytdHistory[ytdHistory.length - 1].date
+    : undefined;
 
   return {
     quote: {
@@ -129,7 +155,10 @@ async function fetchYahooFundData(
       dayLow: q.regularMarketDayLow ?? price,
       volume: q.regularMarketVolume ?? 0,
       currency: q.currency ?? fund.currency,
-      exchange: q.fullExchangeName ?? "NYSE Arca",
+      exchange: q.fullExchangeName ?? (fund.isin ? "UCITS" : "NYSE Arca"),
+      navDate: lastNavDate,
+      mtdReturn: pctChange(firstPriceAtOrAfter(ytdHistory, mtdStart), price) ?? undefined,
+      ytdReturn: pctChange(firstPriceAtOrAfter(ytdHistory, ytdStart), price) ?? undefined,
     },
     history,
   };

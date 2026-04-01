@@ -50,6 +50,7 @@ export interface Quote {
 export interface FundQuote extends Quote {
   navDate?: string;
   ytdReturn?: number;
+  mtdReturn?: number;
   expenseRatio?: number;
 }
 

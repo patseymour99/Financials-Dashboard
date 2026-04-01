@@ -26,10 +26,38 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
+function PerfStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | null | undefined;
+}) {
+  if (value == null) {
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-xs" style={{ color: "var(--text-3)" }}>{label}</span>
+        <span className="text-xs tabnum" style={{ color: "var(--text-3)" }}>—</span>
+      </div>
+    );
+  }
+  const isPos = value >= 0;
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-xs" style={{ color: "var(--text-3)" }}>{label}</span>
+      <span
+        className="text-xs font-semibold tabnum"
+        style={{ color: isPos ? "var(--green)" : "var(--red)" }}
+      >
+        {isPos ? "+" : ""}{value.toFixed(2)}%
+      </span>
+    </div>
+  );
+}
+
 export function FundCard({ data }: Props) {
   const { fund, quote, history } = data;
   const isUcits    = !!fund.isin;
-  const isYahoo    = (fund.dataSource ?? "blackrock") === "yahoo";
   const isUp       = (quote?.changePercent ?? 0) >= 0;
   const chartColor = isUp ? "#22c55e" : "#ef4444";
 
@@ -38,12 +66,8 @@ export function FundCard({ data }: Props) {
   const minVal = prices.length ? Math.min(...prices) * 0.993 : 0;
   const maxVal = prices.length ? Math.max(...prices) * 1.007 : 1;
 
-  const sourceLabel = isYahoo ? "Yahoo Finance" : "BlackRock";
-  const dataDetail  = isYahoo
-    ? isUcits ? `Yahoo · ${fund.ticker}` : `NYSE Arca · ${fund.ticker}`
-    : `BlackRock #${fund.blackrockProductId}`;
+  const dataDetail  = isUcits ? `Yahoo · ${fund.ticker}` : `NYSE Arca · ${fund.ticker}`;
   const exchangeLabel = isUcits ? "UCITS / Luxembourg" : "NYSE Arca";
-  const priceLabel    = isYahoo ? "Price" : "NAV";
 
   return (
     <div
@@ -73,57 +97,67 @@ export function FundCard({ data }: Props) {
             className="shrink-0 text-xs font-medium px-2 py-0.5 rounded border"
             style={{ color: "var(--text-3)", borderColor: "var(--border-2)", background: "var(--surface-2)" }}
           >
-            {sourceLabel}
+            Yahoo Finance
           </span>
         </div>
 
         {/* Price / NAV */}
         {quote && quote.price > 0 ? (
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold tabnum" style={{ color: "var(--text-1)" }}>
-                  {quote.price.toFixed(2)}
-                </span>
-                <span className="text-sm font-medium" style={{ color: "var(--text-3)" }}>
-                  {quote.currency}
-                </span>
+          <>
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold tabnum" style={{ color: "var(--text-1)" }}>
+                    {quote.price.toFixed(2)}
+                  </span>
+                  <span className="text-sm font-medium" style={{ color: "var(--text-3)" }}>
+                    {quote.currency}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className="text-sm font-semibold tabnum"
+                    style={{ color: isUp ? "var(--green)" : "var(--red)" }}
+                  >
+                    {isUp ? "▲" : "▼"} {Math.abs(quote.changePercent).toFixed(2)}%
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--text-3)" }}>
+                    {isUp ? "+" : ""}{quote.change.toFixed(2)} today
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span
-                  className="text-sm font-semibold tabnum"
-                  style={{ color: isUp ? "var(--green)" : "var(--red)" }}
-                >
-                  {isUp ? "▲" : "▼"} {Math.abs(quote.changePercent).toFixed(2)}%
-                </span>
-                <span className="text-xs" style={{ color: "var(--text-3)" }}>
-                  {isUp ? "+" : ""}{quote.change.toFixed(2)} vs prev day
-                </span>
+              <div className="text-right">
+                <p className="text-xs" style={{ color: "var(--text-3)" }}>Prev close</p>
+                <p className="text-sm font-medium tabnum" style={{ color: "var(--text-2)" }}>
+                  {quote.previousClose.toFixed(2)}
+                </p>
+                {quote.navDate && (
+                  <>
+                    <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>As of</p>
+                    <p className="text-xs tabnum" style={{ color: "var(--text-2)" }}>
+                      {format(parseISO(quote.navDate), "dd MMM yyyy")}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs" style={{ color: "var(--text-3)" }}>Prev {priceLabel}</p>
-              <p className="text-sm font-medium tabnum" style={{ color: "var(--text-2)" }}>
-                {quote.previousClose.toFixed(2)}
-              </p>
-              {quote.navDate && (
-                <>
-                  <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>As of</p>
-                  <p className="text-xs tabnum" style={{ color: "var(--text-2)" }}>
-                    {format(parseISO(quote.navDate), "dd MMM yyyy")}
-                  </p>
-                </>
-              )}
+
+            {/* Performance row: Day / MTD / YTD */}
+            <div
+              className="grid grid-cols-3 rounded-lg border py-3"
+              style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+            >
+              <PerfStat label="Day"  value={quote.changePercent} />
+              <div className="border-x" style={{ borderColor: "var(--border)" }}>
+                <PerfStat label="MTD" value={quote.mtdReturn} />
+              </div>
+              <PerfStat label="YTD"  value={quote.ytdReturn} />
             </div>
-          </div>
+          </>
         ) : (
           <div className="flex items-center gap-2 text-sm py-2" style={{ color: "var(--amber)" }}>
             <span>⚠</span>
-            <span>
-              {isYahoo
-                ? `Live price unavailable — ${fund.ticker}`
-                : `NAV unavailable — BlackRock product ${fund.blackrockProductId}`}
-            </span>
+            <span>Live price unavailable — {fund.ticker}</span>
           </div>
         )}
 
@@ -155,7 +189,7 @@ export function FundCard({ data }: Props) {
 
       {/* Stats footer */}
       <div
-        className="grid grid-cols-2 divide-x border-t px-0"
+        className="grid grid-cols-2 divide-x border-t"
         style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
       >
         {[
