@@ -54,6 +54,8 @@ export const FUNDS: FundConfig[] = [
     shortName: "iShares FinTech",
     ticker: "BPAY",
     dataSource: "yahoo",
+    isharesProductId: "329128",
+    isharesSlug: "ishares-fintech-active-etf",
     currency: "USD",
     description:
       "iShares FinTech Active ETF (BPAY) — actively managed exposure to companies driving financial technology innovation. NYSE Arca.",
@@ -105,6 +107,8 @@ export const FUNDS: FundConfig[] = [
     shortName: "iShares AI & Tech (BAI)",
     ticker: "BAI",
     dataSource: "yahoo",
+    isharesProductId: "339081",
+    isharesSlug: "ishares-a-i-innovation-and-tech-active-etf",
     currency: "USD",
     description:
       "iShares AI Innovation and Tech Active ETF (BAI) — actively managed exposure to companies driving artificial intelligence and technology innovation. NYSE Arca.",
@@ -156,6 +160,8 @@ export const FUNDS: FundConfig[] = [
     shortName: "iShares Health Innovation (BMED)",
     ticker: "BMED",
     dataSource: "yahoo",
+    isharesProductId: "316007",
+    isharesSlug: "ishares-health-innovation-active-etf",
     currency: "USD",
     description:
       "iShares Health Innovation Active ETF (BMED) — actively managed exposure to companies driving innovation across healthcare, genomics, medical devices and digital health. NYSE Arca.",

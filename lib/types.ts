@@ -23,6 +23,9 @@ export interface FundConfig {
   dataSource?: "blackrock" | "yahoo";
   blackrockProductId?: string;
   blackrockRegion?: "uk" | "us";
+  /** iShares holdings API product ID + slug — if set, holdings are fetched daily */
+  isharesProductId?: string;
+  isharesSlug?: string;
   currency: string;
   description: string;
   color: string;

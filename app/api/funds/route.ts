@@ -4,11 +4,68 @@ import { FUNDS, MARKET_INDICES } from "@/lib/constants";
 import {
   FundConfig,
   FundQuote,
+  HoldingConfig,
   HoldingQuote,
   MarketIndex,
   HistoricalPoint,
   FundData,
 } from "@/lib/types";
+
+// ── iShares live holdings ─────────────────────────────────────────────────
+
+const ISHARES_HEADERS: HeadersInit = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: "https://www.ishares.com/",
+  Origin: "https://www.ishares.com",
+};
+
+/**
+ * Fetch the latest daily holdings from BlackRock's iShares holdings API.
+ * Returns an empty array on failure so the caller falls back to hardcoded data.
+ */
+async function fetchIsharesHoldings(
+  productId: string,
+  slug: string
+): Promise<HoldingConfig[]> {
+  const url =
+    `https://www.ishares.com/us/products/${productId}/${slug}` +
+    `/1467271812596.ajax?tab=holdings&fileType=json`;
+  try {
+    const res = await fetch(url, { headers: ISHARES_HEADERS, cache: "no-store" });
+    if (!res.ok) throw new Error(`iShares holdings HTTP ${res.status}`);
+
+    const json = await res.json();
+    // Response shape: { aaData: [[ticker, name, assetClass, weight, ...], ...] }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[][] = json?.aaData ?? [];
+
+    const holdings: HoldingConfig[] = [];
+    for (const row of rows) {
+      // Columns: [ticker, name, assetClass, weight%, price, shares, marketValue, notional, ...]
+      const ticker = String(row[0] ?? "").trim();
+      const name   = String(row[1] ?? "").trim();
+      const weight = parseFloat(String(row[3] ?? "0").replace(/[^0-9.-]/g, ""));
+
+      // Skip cash, money-market entries, and rows without a real ticker
+      if (!ticker || ticker === "-" || ticker === "CASH" || /^[0-9]/.test(ticker)) continue;
+      // Skip non-equity asset classes
+      const assetClass = String(row[2] ?? "").toLowerCase();
+      if (assetClass.includes("cash") || assetClass.includes("money")) continue;
+
+      holdings.push({ ticker, name, weight: isNaN(weight) ? undefined : weight });
+      if (holdings.length >= 20) break; // cap at top 20
+    }
+
+    return holdings;
+  } catch (err) {
+    console.error(`iShares holdings fetch failed for ${slug}:`, err);
+    return [];
+  }
+}
 
 // ── BlackRock NAV ─────────────────────────────────────────────────────────
 
@@ -203,17 +260,33 @@ function yfToHolding(
 
 export async function GET() {
   try {
+    // Step 1: Fetch live iShares holdings for ETFs that support it (in parallel)
+    const isharesHoldingsMap = new Map<string, HoldingConfig[]>();
+    await Promise.all(
+      FUNDS
+        .filter((f) => f.isharesProductId && f.isharesSlug)
+        .map(async (f) => {
+          const live = await fetchIsharesHoldings(f.isharesProductId!, f.isharesSlug!);
+          if (live.length) isharesHoldingsMap.set(f.id, live);
+        })
+    );
+
+    // Step 2: Collect all holding tickers (live where available, else hardcoded)
     const holdingTickers = [
-      ...new Set(FUNDS.flatMap((f) => f.holdings.map((h) => h.ticker))),
+      ...new Set(
+        FUNDS.flatMap((f) =>
+          (isharesHoldingsMap.get(f.id) ?? f.holdings).map((h) => h.ticker)
+        )
+      ),
     ];
-    // Also include Yahoo-sourced ETF tickers for fund price lookup
+
     const yahooFundTickers = FUNDS
       .filter((f) => (f.dataSource ?? "blackrock") === "yahoo")
       .map((f) => f.ticker);
 
     const indexTickers = MARKET_INDICES.map((i) => i.ticker);
 
-    // One batch Yahoo quote call + one data call per fund — all parallel
+    // Step 3: Batch Yahoo quote + per-fund data calls in parallel
     const blackrockFunds = FUNDS.filter((f) => (f.dataSource ?? "blackrock") === "blackrock");
     const [quotesResult, ...fundResults] = await Promise.allSettled([
       fetchQuotes([...holdingTickers, ...yahooFundTickers, ...indexTickers]),
@@ -223,7 +296,6 @@ export async function GET() {
     const quotes: Map<string, YFQuote> =
       quotesResult.status === "fulfilled" ? quotesResult.value : new Map();
 
-    // Map BlackRock results back to their fund index
     const brResultsByFundId = new Map<string, FundResult>();
     blackrockFunds.forEach((fund, i) => {
       const r = fundResults[i];
@@ -235,7 +307,7 @@ export async function GET() {
       );
     });
 
-    // Build FundData for each fund (BlackRock or Yahoo)
+    // Step 4: Build FundData — use live holdings if fetched, hardcoded as fallback
     const fundDataPromises = FUNDS.map(async (fund): Promise<FundData> => {
       const source = fund.dataSource ?? "blackrock";
       const result: FundResult =
@@ -243,14 +315,11 @@ export async function GET() {
           ? await fetchYahooFundData(fund, quotes)
           : (brResultsByFundId.get(fund.id) ?? { quote: null, history: [] });
 
-      return {
-        fund,
-        quote: result.quote,
-        history: result.history,
-        holdings: fund.holdings.map((h) =>
-          yfToHolding(h.ticker, h.name, h.weight, quotes)
-        ),
-      };
+      const holdings = (isharesHoldingsMap.get(fund.id) ?? fund.holdings).map((h) =>
+        yfToHolding(h.ticker, h.name, h.weight, quotes)
+      );
+
+      return { fund, quote: result.quote, history: result.history, holdings };
     });
 
     const fundsData: FundData[] = await Promise.all(fundDataPromises);

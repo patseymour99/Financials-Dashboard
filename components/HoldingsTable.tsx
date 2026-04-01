@@ -141,10 +141,10 @@ export function HoldingsTable({ funds }: Props) {
         style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
       >
         <span className="text-xs" style={{ color: "var(--text-3)" }}>
-          Prices updated daily via Yahoo Finance
+          Prices live via Yahoo Finance
         </span>
         <span className="text-xs" style={{ color: "var(--text-3)" }}>
-          Holdings composition from latest fund disclosure · weights indicative
+          Active ETF holdings fetched daily from iShares · BGF composition from latest disclosure
         </span>
       </div>
     </div>
