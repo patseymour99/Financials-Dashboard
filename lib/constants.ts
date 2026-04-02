@@ -2,12 +2,6 @@ import { FundConfig, SectorConfig } from "./types";
 
 export const SECTORS: SectorConfig[] = [
   {
-    id: "financials",
-    name: "Financials",
-    color: "#f59e0b",
-    description: "Global financial sector equities — banks, insurers, payments & fintech",
-  },
-  {
     id: "technology",
     name: "Technology",
     color: "#3b82f6",
@@ -18,6 +12,12 @@ export const SECTORS: SectorConfig[] = [
     name: "Healthcare",
     color: "#22c55e",
     description: "Global healthcare equities — pharmaceuticals, biotech, medical devices & services",
+  },
+  {
+    id: "financials",
+    name: "Financials",
+    color: "#f59e0b",
+    description: "Global financial sector equities — banks, insurers, payments & fintech",
   },
 ];
 

@@ -111,7 +111,7 @@ export default function Home() {
   const [error, setError]           = useState("");
   const [lastRefreshed, setLast]    = useState<Date | null>(null);
   const [marketOpen, setMarketOpen] = useState<"pre" | "open" | "closed">("closed");
-  const [activeSector, setActiveSector] = useState<Sector>("financials");
+  const [activeSector, setActiveSector] = useState<Sector>("technology");
 
   // US market status
   useEffect(() => {
@@ -278,11 +278,59 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── 1. Fund cards ────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════
+            LAYER 1 — WHAT'S DRIVING MARKETS
+            Macro indices, asset classes, key rates.
+            Context before anything sector-specific.
+        ══════════════════════════════════════════════════ */}
+        {(data || loading) && (
+          <section>
+            <SectionHeading
+              label="What's Driving Markets"
+              sub="S&P 500 · Nasdaq · FTSE · 10Y Yield · BTC · Gold · Oil · VIX — Day · MTD · YTD"
+            />
+            {loading && !data ? (
+              <div className="h-48 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
+            ) : (
+              <PerformanceMetrics metrics={metrics} />
+            )}
+          </section>
+        )}
+
+        {/* ══════════════════════════════════════════════════
+            LAYER 2 — WHAT'S DRIVING THE SECTOR
+            AI synthesis of sector-specific catalysts,
+            news, and macro cross-currents.
+        ══════════════════════════════════════════════════ */}
+        {(data || loading) && (
+          <section>
+            <SectionHeading
+              label={`What's Driving ${activeSectorConfig.name}`}
+              sub={`Sector intelligence · Claude · ${activeSectorConfig.name} funds + news synthesis`}
+            />
+            {loading && !data ? (
+              <div className="h-32 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
+            ) : (
+              <>
+                <AIBriefing data={briefingReq} />
+                {data && (
+                  <div className="mt-4">
+                    <NewsSection news={data.news} sectorName={activeSectorConfig.name} />
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {/* ══════════════════════════════════════════════════
+            LAYER 3 — THE FUNDS
+            Live fund prices, charts, holdings.
+        ══════════════════════════════════════════════════ */}
         <section>
           <SectionHeading
             label={`${activeSectorConfig.name} Funds`}
-            sub={`${sectorFunds.length} fund${sectorFunds.length !== 1 ? "s" : ""} · live prices`}
+            sub={`${sectorFunds.length} fund${sectorFunds.length !== 1 ? "s" : ""} · live NAV & holdings`}
           />
 
           {loading && !data ? (
@@ -304,46 +352,15 @@ export default function Home() {
           )}
         </section>
 
-        {data && (
-          <>
-            {/* ── 2. AI Briefing ────────────────────────────── */}
-            <section>
-              <SectionHeading
-                label="AI Briefing"
-                sub={`Claude · ${activeSectorConfig.name}`}
-              />
-              <AIBriefing data={briefingReq} />
-            </section>
-
-            {/* ── 3. Market performance ─────────────────────── */}
-            <section>
-              <SectionHeading
-                label="Market Performance"
-                sub="Day · MTD · YTD — S&P 500 · Nasdaq · 10Y Yield · BTC · Gold · Oil"
-              />
-              <PerformanceMetrics metrics={metrics} />
-            </section>
-
-            {/* ── 4. Full holdings ──────────────────────────── */}
-            {sectorFunds.length > 0 && sectorFunds.some((f) => f.holdings.length > 0) && (
-              <section>
-                <SectionHeading
-                  label="All Holdings"
-                  sub="Live quotes · iShares daily data"
-                />
-                <HoldingsTable funds={sectorFunds} />
-              </section>
-            )}
-
-            {/* ── 5. News ───────────────────────────────────── */}
-            <section>
-              <SectionHeading
-                label="Latest News"
-                sub={`${activeSectorConfig.name} · Market · Portfolio companies`}
-              />
-              <NewsSection news={data.news} sectorName={activeSectorConfig.name} />
-            </section>
-          </>
+        {/* ── Full holdings detail (drill-down) ──────────── */}
+        {data && sectorFunds.length > 0 && sectorFunds.some((f) => f.holdings.length > 0) && (
+          <section>
+            <SectionHeading
+              label="Holdings Detail"
+              sub="All positions · live prices · fund weights"
+            />
+            <HoldingsTable funds={sectorFunds} />
+          </section>
         )}
 
         {/* Footer */}

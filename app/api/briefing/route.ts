@@ -57,67 +57,71 @@ function buildPrompt(data: BriefingRequest): string {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
-  // Dynamically describe the funds from the data
   const fundDescriptions = data.fundData
-    .map((fd, i) =>
-      `${i + 1}. ${fd.fund.name} — ${fd.fund.description}`
-    )
+    .map((fd, i) => `${i + 1}. ${fd.fund.name} — ${fd.fund.description}`)
     .join("\n");
 
   const fundNames = data.fundData.map((fd) => fd.fund.shortName).join(" · ");
 
-  return `You are a senior portfolio analyst preparing a morning briefing for a fund manager covering:
+  // Infer sector from fund data
+  const sector = data.fundData[0]?.fund.sector ?? "equity";
+  const sectorLabel = sector.charAt(0).toUpperCase() + sector.slice(1);
+
+  return `You are a senior product specialist at an asset management firm preparing a sector intelligence briefing for ${today}.
+
+Your coverage:
 ${fundDescriptions}
 
-Today is ${today}. Be concise, insightful, and directly actionable.
+Think in three layers — work top-down:
+1. What broad macro forces are shaping markets right now?
+2. How do those forces specifically impact the ${sectorLabel} sector?
+3. What does this mean for these specific funds and their holdings?
 
 === LIVE MARKET DATA ===
 ${formatIndices(data.indices)}
 
-=== PERFORMANCE TABLE ===
+=== PERFORMANCE TABLE (Day / MTD / YTD) ===
 ${"Asset".padEnd(16)} ${"Price".padEnd(12)} ${"Day".padEnd(10)} ${"MTD".padEnd(10)} YTD
 ${formatMetrics(data.metrics)}
 
-=== FUND PRICES / NAVs ===
+=== FUND DATA ===
 ${formatFundSummary(data.fundData)}
 
 === NEWS ===
 ${formatNewsSection(data.news.market, "Broad Market")}
 
-${formatNewsSection(data.news.sector, "Sector")}
+${formatNewsSection(data.news.sector, `${sectorLabel} Sector`)}
 
 ${formatNewsSection(data.news.portfolio, "Portfolio Companies")}
 
-=== REQUIRED OUTPUT FORMAT ===
+=== OUTPUT FORMAT (follow exactly) ===
 
-## Morning Briefing — ${today}
+## ${sectorLabel} Sector Intelligence — ${today}
 
-### Executive Summary
-(2–3 sentences — the single most important thing to know right now)
+### What's Driving Markets
+(2–3 sentences on the dominant macro theme right now — rates, risk sentiment, growth vs value, geopolitics. Be specific: cite actual index moves, yield levels, or macro data from the table above.)
 
-### Market Conditions
-(Key macro themes, rate/yield moves, risk sentiment)
+### What's Driving ${sectorLabel}
+(The 2–3 sector-specific catalysts or headwinds most relevant today. How does the macro above translate into this sector? Name the key themes — e.g. for Tech: AI capex cycle, semis pricing; for Healthcare: GLP-1 momentum, approval pipeline; for Financials: yield curve, credit spreads.)
 
-### ${data.fundData[0]?.fund.shortName ?? "Fund 1"} — Update
-(Price/NAV context, sector drivers, holdings of note, risk factors)
+### ${data.fundData[0]?.fund.shortName ?? "Fund 1"} — What to Watch
+(Price context, key holdings driving performance, sector themes playing out in this fund. 3–5 sentences.)
 
-### ${data.fundData[1]?.fund.shortName ?? "Fund 2"} — Update
-(Price/NAV context, sector themes, holdings of note, risk factors)
+### ${data.fundData[1]?.fund.shortName ?? "Fund 2"} — What to Watch
+(Same structure as above for the second fund.)
 
-### Performance Context
-(How MTD/YTD numbers compare to broad market; any notable divergence)
+### Holdings in Focus
+(2–3 specific stocks from the holdings that are most relevant to the sector themes above — what's moving and why.)
 
-### Key News & Themes
-(Top 3–4 stories with direct implications for these funds: ${fundNames})
-
-### Portfolio Companies in Focus
-(Any notable moves, earnings, or news from holdings worth acting on)
-
-### Risk Watch
-(What to monitor today — data releases, central bank, earnings, geopolitics)
+### Risk Factors
+(Top 2–3 risks to monitor: data releases, central bank, earnings, regulatory, geopolitical. Be specific and time-bound where possible.)
 
 ### Today's Priorities
-(3 bullet-point action items for the fund manager)`;
+- (Action item 1 — specific and tied to the data above)
+- (Action item 2)
+- (Action item 3)
+
+Funds covered: ${fundNames}. Be concise, analytical, and directly tied to the data provided. Avoid generic observations.`;
 }
 
 export async function POST(req: Request) {
