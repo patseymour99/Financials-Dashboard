@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Financials Dashboard",
+  title: "FE Sectors Dashboard",
   description:
-    "Morning briefing dashboard for BGF World Financials & iShares Fintech Active ETF",
+    "Sector equity dashboard — Financials, Technology & Healthcare funds with live holdings, market data and AI briefings",
 };
 
 export default function RootLayout({
