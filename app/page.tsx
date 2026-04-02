@@ -4,10 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { MarketBar } from "@/components/MarketBar";
 import { FundCard } from "@/components/FundCard";
 import { HoldingsTable } from "@/components/HoldingsTable";
-import { NewsSection } from "@/components/NewsSection";
-import { AIBriefing } from "@/components/AIBriefing";
+import { SectorIntelligence } from "@/components/SectorIntelligence";
 import { PerformanceMetrics } from "@/components/PerformanceMetrics";
-import { DashboardData, BriefingRequest, MetricAsset, Sector, FundData } from "@/lib/types";
+import { DashboardData, BriefingRequest, MetricAsset, Sector, FundData, SubSectorPerf } from "@/lib/types";
 import { SECTORS } from "@/lib/constants";
 import { format } from "date-fns";
 
@@ -107,6 +106,7 @@ function SkeletonCard() {
 export default function Home() {
   const [data, setData]             = useState<DashboardData | null>(null);
   const [metrics, setMetrics]       = useState<MetricAsset[]>([]);
+  const [subSectors, setSubSectors] = useState<Partial<Record<Sector, SubSectorPerf[]>>>({});
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState("");
   const [lastRefreshed, setLast]    = useState<Date | null>(null);
@@ -142,13 +142,15 @@ export default function Home() {
       const mtrData = metricsRes.status === "fulfilled" && metricsRes.value.ok ? await metricsRes.value.json() : null;
 
       setData({
-        funds:       funds?.funds   ?? [],
-        indices:     funds?.indices ?? [],
-        metrics:     mtrData?.metrics ?? [],
+        funds:       funds?.funds      ?? [],
+        indices:     funds?.indices    ?? [],
+        metrics:     mtrData?.metrics  ?? [],
+        subSectors:  mtrData?.subSectors ?? {},
         news:        news ?? { market: [], sector: [], portfolio: [] },
         lastUpdated: new Date().toISOString(),
       });
       setMetrics(mtrData?.metrics ?? []);
+      setSubSectors(mtrData?.subSectors ?? {});
       setLast(new Date());
     } catch (e) {
       setError((e as Error).message || "Failed to load data");
@@ -299,26 +301,25 @@ export default function Home() {
 
         {/* ══════════════════════════════════════════════════
             LAYER 2 — WHAT'S DRIVING THE SECTOR
-            AI synthesis of sector-specific catalysts,
-            news, and macro cross-currents.
+            GICS sub-sector performance + key events + AI
+            briefing on left; news panels in right sidebar.
         ══════════════════════════════════════════════════ */}
         {(data || loading) && (
           <section>
             <SectionHeading
               label={`What's Driving ${activeSectorConfig.name}`}
-              sub={`Sector intelligence · Claude · ${activeSectorConfig.name} funds + news synthesis`}
+              sub="GICS sub-sectors · key events · sector intelligence · AI briefing"
             />
             {loading && !data ? (
-              <div className="h-32 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
-            ) : (
-              <>
-                <AIBriefing data={briefingReq} />
-                {data && (
-                  <div className="mt-4">
-                    <NewsSection news={data.news} sectorName={activeSectorConfig.name} />
-                  </div>
-                )}
-              </>
+              <div className="h-64 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
+            ) : data && (
+              <SectorIntelligence
+                subSectors={subSectors[activeSector] ?? []}
+                news={data.news}
+                briefingData={briefingReq}
+                sectorName={activeSectorConfig.name}
+                sectorColor={activeSectorConfig.color}
+              />
             )}
           </section>
         )}

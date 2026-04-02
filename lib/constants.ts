@@ -6,18 +6,39 @@ export const SECTORS: SectorConfig[] = [
     name: "Technology",
     color: "#3b82f6",
     description: "Global technology equities — semiconductors, software, platforms & AI",
+    subSectors: [
+      { name: "Semiconductors",  ticker: "SOXX",   etfLabel: "iShares Semiconductor ETF" },
+      { name: "Software",        ticker: "IGV",    etfLabel: "iShares Expanded Tech-Software" },
+      { name: "Cloud Computing", ticker: "SKYY",   etfLabel: "First Trust Cloud Computing ETF" },
+      { name: "Cybersecurity",   ticker: "CIBR",   etfLabel: "First Trust NASDAQ Cybersecurity" },
+      { name: "Internet",        ticker: "PNQI",   etfLabel: "Invesco NASDAQ Internet ETF" },
+    ],
   },
   {
     id: "healthcare",
     name: "Healthcare",
     color: "#22c55e",
     description: "Global healthcare equities — pharmaceuticals, biotech, medical devices & services",
+    subSectors: [
+      { name: "Biotechnology",      ticker: "IBB",  etfLabel: "iShares Biotechnology ETF" },
+      { name: "Pharmaceuticals",    ticker: "PJP",  etfLabel: "Invesco Dynamic Pharmaceuticals" },
+      { name: "Medical Devices",    ticker: "IHI",  etfLabel: "iShares U.S. Medical Devices ETF" },
+      { name: "Healthcare Services",ticker: "IHF",  etfLabel: "iShares U.S. Healthcare Providers" },
+      { name: "Genomics",           ticker: "ARKG", etfLabel: "ARK Genomic Revolution ETF" },
+    ],
   },
   {
     id: "financials",
     name: "Financials",
     color: "#f59e0b",
     description: "Global financial sector equities — banks, insurers, payments & fintech",
+    subSectors: [
+      { name: "Banks",            ticker: "KBE",  etfLabel: "SPDR S&P Bank ETF" },
+      { name: "Insurance",        ticker: "KIE",  etfLabel: "SPDR S&P Insurance ETF" },
+      { name: "Capital Markets",  ticker: "IAI",  etfLabel: "iShares U.S. Broker-Dealers ETF" },
+      { name: "FinTech",          ticker: "FINX", etfLabel: "Global X FinTech ETF" },
+      { name: "Regional Banks",   ticker: "KRE",  etfLabel: "SPDR S&P Regional Banking ETF" },
+    ],
   },
 ];
 

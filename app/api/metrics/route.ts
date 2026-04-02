@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchQuotes, fetchHistory, YFHistoricalPoint } from "@/lib/yahoo";
-import { MetricAsset } from "@/lib/types";
+import { MetricAsset, SubSectorPerf, Sector } from "@/lib/types";
+import { SECTORS } from "@/lib/constants";
 
 // Assets shown in the performance table.
 // Yahoo Finance tickers: forex = "XXX=X", BTC = "BTC-USD", futures = "XX=F"
@@ -33,20 +34,24 @@ export async function GET() {
     const now      = new Date();
     const ytdStart = `${now.getFullYear()}-01-01`;
     const mtdStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const tickers  = METRIC_CONFIGS.map((c) => c.ticker);
 
-    // Quotes (one batch call) + YTD history per ticker — all in parallel
+    const metricTickers    = METRIC_CONFIGS.map((c) => c.ticker);
+    const subSectorTickers = SECTORS.flatMap((s) => s.subSectors.map((ss) => ss.ticker));
+    const allTickers       = [...new Set([...metricTickers, ...subSectorTickers])];
+
+    // Single batch quote call for everything + YTD history only for main metrics
     const [quotesResult, ...histResults] = await Promise.allSettled([
-      fetchQuotes(tickers),
-      ...tickers.map((t) => fetchHistory(t, "ytd")),
+      fetchQuotes(allTickers),
+      ...metricTickers.map((t) => fetchHistory(t, "ytd")),
     ]);
 
     const quotes =
       quotesResult.status === "fulfilled" ? quotesResult.value : new Map();
 
+    // ── Main metric assets (with MTD/YTD from history) ──────────────────
     const metrics: MetricAsset[] = METRIC_CONFIGS.map((cfg, i) => {
       const q       = quotes.get(cfg.ticker);
-      const history = histResults[i].status === "fulfilled"
+      const history = histResults[i]?.status === "fulfilled"
         ? (histResults[i] as PromiseFulfilledResult<YFHistoricalPoint[]>).value
         : [];
 
@@ -70,7 +75,23 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ metrics, lastUpdated: new Date().toISOString() });
+    // ── GICS sub-sector performance (Day % only — no history needed) ────
+    const subSectors: Partial<Record<Sector, SubSectorPerf[]>> = {};
+    for (const sector of SECTORS) {
+      subSectors[sector.id] = sector.subSectors.map((ss) => {
+        const q = quotes.get(ss.ticker);
+        return {
+          name:          ss.name,
+          ticker:        ss.ticker,
+          etfLabel:      ss.etfLabel,
+          price:         q?.regularMarketPrice         ?? 0,
+          change:        q?.regularMarketChange        ?? 0,
+          changePercent: q?.regularMarketChangePercent ?? 0,
+        };
+      });
+    }
+
+    return NextResponse.json({ metrics, subSectors, lastUpdated: new Date().toISOString() });
   } catch (err) {
     console.error("Metrics fetch error:", err);
     return NextResponse.json({ error: "Failed to fetch metrics" }, { status: 500 });

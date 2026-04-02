@@ -1,10 +1,30 @@
 export type Sector = "financials" | "technology" | "healthcare";
 
+export interface SubSectorConfig {
+  /** Display name, e.g. "Semiconductors" */
+  name: string;
+  /** Yahoo Finance ticker for the proxy ETF */
+  ticker: string;
+  /** Short ETF name shown as tooltip/label */
+  etfLabel: string;
+}
+
+export interface SubSectorPerf {
+  name: string;
+  ticker: string;
+  etfLabel: string;
+  price: number;
+  change: number;
+  changePercent: number;
+}
+
 export interface SectorConfig {
   id: Sector;
   name: string;
   color: string;
   description: string;
+  /** GICS industry/sub-sector proxies — ETFs used for performance display */
+  subSectors: SubSectorConfig[];
 }
 
 export interface HoldingConfig {
@@ -113,6 +133,8 @@ export interface DashboardData {
   funds: FundData[];
   indices: MarketIndex[];
   metrics: MetricAsset[];
+  /** GICS sub-sector ETF performance keyed by sector id */
+  subSectors: Partial<Record<Sector, SubSectorPerf[]>>;
   news: {
     market: NewsItem[];
     sector: NewsItem[];
