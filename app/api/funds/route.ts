@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchQuotes, fetchHistory, YFHistoricalPoint, YFQuote } from "@/lib/yahoo";
+import { fetchQuotes, fetchHistory, fetchETFHoldings, YFHistoricalPoint, YFQuote } from "@/lib/yahoo";
 import { FUNDS, MARKET_INDICES } from "@/lib/constants";
 import {
   FundConfig,
@@ -263,18 +263,30 @@ function yfToHolding(
 
 export async function GET() {
   try {
-    // Step 1: Fetch live iShares holdings for ETFs that support it (in parallel)
+    // Step 1: Fetch live holdings for active iShares ETFs.
+    // Primary source: iShares holdings API.
+    // Backup source: Yahoo Finance quoteSummary/topHoldings.
+    // For non-iShares funds (BGF): use the curated holdings list from config.
     const isharesHoldingsMap = new Map<string, HoldingConfig[]>();
     await Promise.all(
       FUNDS
         .filter((f) => f.isharesProductId && f.isharesSlug)
         .map(async (f) => {
-          const live = await fetchIsharesHoldings(f.isharesProductId!, f.isharesSlug!);
+          // Try iShares first
+          let live = await fetchIsharesHoldings(f.isharesProductId!, f.isharesSlug!);
+
+          // Fallback to Yahoo Finance topHoldings if iShares returned nothing
+          if (!live.length) {
+            console.log(`iShares failed for ${f.ticker}, trying Yahoo topHoldings`);
+            const yfHoldings = await fetchETFHoldings(f.ticker);
+            live = yfHoldings.map((h) => ({ ticker: h.ticker, name: h.name, weight: h.weight }));
+          }
+
           if (live.length) isharesHoldingsMap.set(f.id, live);
         })
     );
 
-    // Step 2: Collect all holding tickers (live where available, else hardcoded)
+    // Step 2: Collect all holding tickers (live where available, else fund config for BGF funds)
     const holdingTickers = [
       ...new Set(
         FUNDS.flatMap((f) =>

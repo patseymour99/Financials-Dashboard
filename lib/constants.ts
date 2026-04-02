@@ -61,18 +61,7 @@ export const FUNDS: FundConfig[] = [
       "iShares FinTech Active ETF (BPAY) — actively managed exposure to companies driving financial technology innovation. NYSE Arca.",
     color: "#6366f1",
     sector: "financials",
-    holdings: [
-      { ticker: "V",     name: "Visa",                    weight: 9.1 },
-      { ticker: "MA",    name: "Mastercard",              weight: 8.3 },
-      { ticker: "NU",    name: "Nu Holdings",             weight: 5.6 },
-      { ticker: "PYPL",  name: "PayPal",                  weight: 5.0 },
-      { ticker: "FISV",  name: "Fiserv",                  weight: 4.4 },
-      { ticker: "GPN",   name: "Global Payments",         weight: 3.8 },
-      { ticker: "SQ",    name: "Block",                   weight: 3.5 },
-      { ticker: "COIN",  name: "Coinbase",                weight: 3.2 },
-      { ticker: "AFRM",  name: "Affirm",                  weight: 2.9 },
-      { ticker: "SOFI",  name: "SoFi Technologies",       weight: 2.4 },
-    ],
+    holdings: [], // populated at runtime from iShares API → Yahoo Finance topHoldings
   },
 
   // ── Technology ────────────────────────────────────────────────────────────
@@ -114,18 +103,7 @@ export const FUNDS: FundConfig[] = [
       "iShares AI Innovation and Tech Active ETF (BAI) — actively managed exposure to companies driving artificial intelligence and technology innovation. NYSE Arca.",
     color: "#7c3aed",
     sector: "technology",
-    holdings: [
-      { ticker: "NVDA",  name: "NVIDIA",            weight: 11.5 },
-      { ticker: "MSFT",  name: "Microsoft",         weight: 9.0 },
-      { ticker: "META",  name: "Meta Platforms",    weight: 7.5 },
-      { ticker: "GOOGL", name: "Alphabet",          weight: 6.5 },
-      { ticker: "AMZN",  name: "Amazon",            weight: 5.8 },
-      { ticker: "AVGO",  name: "Broadcom",          weight: 5.0 },
-      { ticker: "AMD",   name: "Advanced Micro Dev", weight: 4.5 },
-      { ticker: "ARM",   name: "Arm Holdings",      weight: 4.0 },
-      { ticker: "CRM",   name: "Salesforce",        weight: 3.5 },
-      { ticker: "ORCL",  name: "Oracle",            weight: 3.2 },
-    ],
+    holdings: [], // populated at runtime from iShares API → Yahoo Finance topHoldings
   },
 
   // ── Healthcare ────────────────────────────────────────────────────────────
@@ -167,18 +145,7 @@ export const FUNDS: FundConfig[] = [
       "iShares Health Innovation Active ETF (BMED) — actively managed exposure to companies driving innovation across healthcare, genomics, medical devices and digital health. NYSE Arca.",
     color: "#0d9488",
     sector: "healthcare",
-    holdings: [
-      { ticker: "LLY",   name: "Eli Lilly",              weight: 9.5 },
-      { ticker: "ISRG",  name: "Intuitive Surgical",     weight: 7.5 },
-      { ticker: "BSX",   name: "Boston Scientific",      weight: 6.2 },
-      { ticker: "VRTX",  name: "Vertex Pharmaceuticals", weight: 5.8 },
-      { ticker: "REGN",  name: "Regeneron Pharmaceuticals", weight: 5.0 },
-      { ticker: "DXCM",  name: "DexCom",                 weight: 4.5 },
-      { ticker: "ABBV",  name: "AbbVie",                 weight: 4.0 },
-      { ticker: "TMO",   name: "Thermo Fisher Scientific", weight: 3.5 },
-      { ticker: "VEEV",  name: "Veeva Systems",          weight: 3.0 },
-      { ticker: "ILMN",  name: "Illumina",               weight: 2.5 },
-    ],
+    holdings: [], // populated at runtime from iShares API → Yahoo Finance topHoldings
   },
 ];
 

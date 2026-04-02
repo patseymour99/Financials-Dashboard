@@ -238,6 +238,59 @@ export async function fetchHistory(
   }
 }
 
+// ── ETF Holdings ──────────────────────────────────────────────────────────
+
+export interface YFHolding {
+  ticker: string;
+  name: string;
+  weight: number; // percentage, e.g. 10.34 for 10.34%
+}
+
+/**
+ * Fetch the top holdings for an ETF via Yahoo Finance quoteSummary.
+ * Uses the topHoldings module — no extra API key required, same crumb flow.
+ * Returns an empty array on failure.
+ */
+export async function fetchETFHoldings(etfTicker: string): Promise<YFHolding[]> {
+  const auth = await getCrumb();
+  const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : "";
+
+  const url =
+    `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(etfTicker)}` +
+    `?modules=topHoldings&formatted=false&lang=en-US&region=US${crumbParam}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: authHeaders(auth?.cookies),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Yahoo quoteSummary HTTP ${res.status}`);
+    const json = await res.json();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw: any[] =
+      json?.quoteSummary?.result?.[0]?.topHoldings?.holdings ?? [];
+
+    return raw
+      .filter((h) => h.symbol && h.symbol !== "-")
+      .map((h) => ({
+        ticker: String(h.symbol).trim(),
+        name: String(h.holdingName ?? h.symbol).trim(),
+        // holdingPercent.raw is a decimal fraction (0.1034 → 10.34%)
+        weight:
+          typeof h.holdingPercent === "object"
+            ? (h.holdingPercent.raw ?? 0) * 100
+            : typeof h.holdingPercent === "number"
+            ? h.holdingPercent * 100
+            : 0,
+      }))
+      .filter((h) => h.weight > 0);
+  } catch (err) {
+    console.error(`fetchETFHoldings(${etfTicker}) error:`, err);
+    return [];
+  }
+}
+
 // ── News (RSS — no auth required) ─────────────────────────────────────────
 
 const RSS_BASE = "https://feeds.finance.yahoo.com/rss/2.0/headline";
