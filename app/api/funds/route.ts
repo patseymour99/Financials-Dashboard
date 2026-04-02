@@ -19,8 +19,11 @@ const ISHARES_HEADERS: HeadersInit = {
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
   Accept: "application/json, text/plain, */*",
   "Accept-Language": "en-US,en;q=0.9",
-  Referer: "https://www.ishares.com/",
-  Origin: "https://www.ishares.com",
+  Referer: "https://www.ishares.com/us/products/",
+  "X-Requested-With": "XMLHttpRequest",
+  "sec-fetch-dest": "empty",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-site": "same-origin",
 };
 
 /**
