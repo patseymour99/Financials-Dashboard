@@ -54,7 +54,10 @@ async function fetchIsharesHoldings(
       const weight = parseFloat(String(row[3] ?? "0").replace(/[^0-9.-]/g, ""));
 
       // Skip cash, money-market entries, and rows without a real ticker
-      if (!ticker || ticker === "-" || ticker === "CASH" || /^[0-9]/.test(ticker)) continue;
+      if (!ticker || ticker === "-" || ticker === "CASH") continue;
+      // Skip purely-numeric tickers (e.g. Korean KRX "000660" for SK Hynix) —
+      // Yahoo Finance has no quote for these and they'd show as unavailable
+      if (/^\d+$/.test(ticker)) continue;
       // Skip non-equity asset classes
       const assetClass = String(row[2] ?? "").toLowerCase();
       if (assetClass.includes("cash") || assetClass.includes("money")) continue;
