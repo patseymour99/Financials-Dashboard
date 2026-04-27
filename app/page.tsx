@@ -6,9 +6,9 @@ import { FundCard } from "@/components/FundCard";
 import { HoldingsTable } from "@/components/HoldingsTable";
 import { SectorIntelligence } from "@/components/SectorIntelligence";
 import { PerformanceMetrics } from "@/components/PerformanceMetrics";
-import { DashboardData, BriefingRequest, MetricAsset, Sector, FundData, SubSectorPerf } from "@/lib/types";
+import { DashboardData, BriefingRequest, MetricAsset, Sector, FundData, SubSectorPerf, NewsItem } from "@/lib/types";
 import { SECTORS } from "@/lib/constants";
-import { format } from "date-fns";
+import { format, formatDistanceToNow, parseISO } from "date-fns";
 
 const REFRESH_MS = 15 * 60 * 1000;
 
@@ -33,6 +33,85 @@ function SectionHeading({ label, sub }: { label: string; sub?: string }) {
   );
 }
 
+// ── Compact news panel (right sidebar) ───────────────────────────────────
+
+function CompactNewsPanel({
+  title,
+  accentColor,
+  items,
+}: {
+  title: string;
+  accentColor: string;
+  items: NewsItem[];
+}) {
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+    >
+      <div
+        className="flex items-center gap-2 px-4 py-2.5 border-b"
+        style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+      >
+        <span className="w-1 h-3.5 rounded-full shrink-0" style={{ background: accentColor }} />
+        <span
+          className="text-[10px] font-semibold uppercase tracking-widest flex-1"
+          style={{ color: "var(--text-2)" }}
+        >
+          {title}
+        </span>
+        <span
+          className="text-[10px] tabnum px-1.5 py-0.5 rounded"
+          style={{ color: "var(--text-3)", background: "var(--surface-3)" }}
+        >
+          {items.length}
+        </span>
+      </div>
+
+      <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+        {items.length === 0 && (
+          <p className="px-4 py-4 text-[11px] text-center" style={{ color: "var(--text-3)" }}>
+            Loading news…
+          </p>
+        )}
+        {items.slice(0, 7).map((item) => (
+          <a
+            key={item.uuid}
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block px-4 py-2.5 group transition-colors"
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+          >
+            <p
+              className="text-[11px] font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors"
+              style={{ color: "var(--text-1)" }}
+            >
+              {item.title}
+            </p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-[10px] font-medium" style={{ color: accentColor }}>
+                {item.publisher}
+              </span>
+              <span style={{ color: "var(--border-2)" }}>·</span>
+              <span className="text-[10px]" style={{ color: "var(--text-3)" }}>
+                {(() => {
+                  try {
+                    return formatDistanceToNow(parseISO(item.publishedAt), { addSuffix: true });
+                  } catch {
+                    return "recently";
+                  }
+                })()}
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Sector tabs ───────────────────────────────────────────────────────────
 
 interface SectorTabsProps {
@@ -43,10 +122,10 @@ interface SectorTabsProps {
 function SectorTabs({ activeSector, onChange }: SectorTabsProps) {
   return (
     <div
-      className="sticky top-[52px] z-40 border-b"
+      className="sticky top-[49px] z-40 border-b"
       style={{ background: "var(--surface)", borderColor: "var(--border)" }}
     >
-      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex gap-0">
           {SECTORS.map((sector) => {
             const isActive = activeSector === sector.id;
@@ -113,7 +192,6 @@ export default function Home() {
   const [marketOpen, setMarketOpen] = useState<"pre" | "open" | "closed">("closed");
   const [activeSector, setActiveSector] = useState<Sector>("technology");
 
-  // US market status
   useEffect(() => {
     const update = () => {
       const et  = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
@@ -129,7 +207,7 @@ export default function Home() {
     return () => clearInterval(t);
   }, []);
 
-  const fetchAll = useCallback(async (sector: Sector = "financials") => {
+  const fetchAll = useCallback(async (sector: Sector = "technology") => {
     setLoading(true); setError("");
     try {
       const [fundsRes, newsRes, metricsRes] = await Promise.allSettled([
@@ -189,6 +267,8 @@ export default function Home() {
   const statusDot  = marketOpen === "open" ? "var(--green)" : marketOpen === "pre" ? "var(--amber)" : "var(--border-2)";
   const statusText = marketOpen === "open" ? "Market open" : marketOpen === "pre" ? "Pre-market" : "Market closed";
 
+  const news = data?.news ?? { market: [], sector: [], portfolio: [] };
+
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
 
@@ -197,7 +277,6 @@ export default function Home() {
         className="sticky top-0 z-50 flex items-center gap-4 px-5 py-3 border-b"
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
       >
-        {/* Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
           <div
             className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-black tracking-tight"
@@ -221,13 +300,11 @@ export default function Home() {
 
         <div className="h-4 w-px mx-1" style={{ background: "var(--border-2)" }} />
 
-        {/* Date */}
         <p className="text-[11px] hidden sm:block tabnum" style={{ color: "var(--text-3)" }}>
           {format(new Date(), "EEE d MMM yyyy")}
         </p>
 
         <div className="ml-auto flex items-center gap-3">
-          {/* Market status */}
           <div className="hidden sm:flex items-center gap-1.5">
             <span
               className="w-1.5 h-1.5 rounded-full"
@@ -267,112 +344,134 @@ export default function Home() {
       {/* ── Sector tabs ─────────────────────────────────────── */}
       <SectorTabs activeSector={activeSector} onChange={handleSectorChange} />
 
-      {/* ── Main content ────────────────────────────────────── */}
-      <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-7 space-y-10">
+      {/* ── Two-column layout: content + news sidebar ───────── */}
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-7">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-8 items-start">
 
-        {/* Error */}
-        {error && (
-          <div
-            className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm border"
-            style={{ background: "rgba(239,68,68,0.07)", borderColor: "rgba(239,68,68,0.25)", color: "var(--red)" }}
-          >
-            ⚠ {error}
-          </div>
-        )}
+          {/* ── Left: main content ────────────────────────── */}
+          <main className="min-w-0 space-y-10">
 
-        {/* ══════════════════════════════════════════════════
-            LAYER 1 — WHAT'S DRIVING MARKETS
-            Macro indices, asset classes, key rates.
-            Context before anything sector-specific.
-        ══════════════════════════════════════════════════ */}
-        {(data || loading) && (
-          <section>
-            <SectionHeading
-              label="What's Driving Markets"
-              sub="S&P 500 · Nasdaq · FTSE · 10Y Yield · BTC · Gold · Oil · VIX — Day · MTD · YTD"
-            />
-            {loading && !data ? (
-              <div className="h-48 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
-            ) : (
-              <PerformanceMetrics metrics={metrics} />
+            {error && (
+              <div
+                className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm border"
+                style={{ background: "rgba(239,68,68,0.07)", borderColor: "rgba(239,68,68,0.25)", color: "var(--red)" }}
+              >
+                ⚠ {error}
+              </div>
             )}
-          </section>
-        )}
 
-        {/* ══════════════════════════════════════════════════
-            LAYER 2 — WHAT'S DRIVING THE SECTOR
-            GICS sub-sector performance + key events + AI
-            briefing on left; news panels in right sidebar.
-        ══════════════════════════════════════════════════ */}
-        {(data || loading) && (
-          <section>
-            <SectionHeading
-              label={`What's Driving ${activeSectorConfig.name}`}
-              sub="GICS sub-sectors · key events · sector intelligence · AI briefing"
-            />
-            {loading && !data ? (
-              <div className="h-64 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
-            ) : data && (
-              <SectorIntelligence
-                subSectors={subSectors[activeSector] ?? []}
-                news={data.news}
-                briefingData={briefingReq}
-                sectorName={activeSectorConfig.name}
-                sectorColor={activeSectorConfig.color}
+            {/* ══════════════════════════════════════════════════
+                LAYER 1 — WHAT'S DRIVING MARKETS
+            ══════════════════════════════════════════════════ */}
+            {(data || loading) && (
+              <section>
+                <SectionHeading
+                  label="What's Driving Markets"
+                  sub="MSCI ACWI · S&P 500 · Nasdaq · 10Y Yield · BTC · Gold · WTI · DXY"
+                />
+                {loading && !data ? (
+                  <div className="h-48 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
+                ) : (
+                  <PerformanceMetrics metrics={metrics} />
+                )}
+              </section>
+            )}
+
+            {/* ══════════════════════════════════════════════════
+                LAYER 2 — WHAT'S DRIVING THE SECTOR
+            ══════════════════════════════════════════════════ */}
+            {(data || loading) && (
+              <section>
+                <SectionHeading
+                  label={`What's Driving ${activeSectorConfig.name}`}
+                  sub="GICS industries · key events · AI briefing"
+                />
+                {loading && !data ? (
+                  <div className="h-64 rounded-2xl border animate-pulse" style={{ background: "var(--surface)", borderColor: "var(--border)" }} />
+                ) : data && (
+                  <SectorIntelligence
+                    subSectors={subSectors[activeSector] ?? []}
+                    sectorNews={news.sector}
+                    briefingData={briefingReq}
+                    sectorName={activeSectorConfig.name}
+                    sectorColor={activeSectorConfig.color}
+                  />
+                )}
+              </section>
+            )}
+
+            {/* ══════════════════════════════════════════════════
+                LAYER 3 — THE FUNDS
+            ══════════════════════════════════════════════════ */}
+            <section>
+              <SectionHeading
+                label={`${activeSectorConfig.name} Funds`}
+                sub={`${sectorFunds.length} fund${sectorFunds.length !== 1 ? "s" : ""} · live NAV & holdings`}
               />
+              {loading && !data ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <SkeletonCard />
+                  <SkeletonCard />
+                </div>
+              ) : sectorFunds.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  {sectorFunds.map((fd) => <FundCard key={fd.fund.id} data={fd} />)}
+                </div>
+              ) : !loading && (
+                <div
+                  className="rounded-2xl border flex items-center justify-center py-20 text-sm"
+                  style={{ borderColor: "var(--border)", color: "var(--text-3)" }}
+                >
+                  No funds configured for the {activeSectorConfig.name} sector
+                </div>
+              )}
+            </section>
+
+            {/* ── Holdings detail ──────────────────────────── */}
+            {data && sectorFunds.length > 0 && sectorFunds.some((f) => f.holdings.length > 0) && (
+              <section>
+                <SectionHeading
+                  label="Holdings Detail"
+                  sub="All positions · live prices · fund weights"
+                />
+                <HoldingsTable funds={sectorFunds} />
+              </section>
             )}
-          </section>
-        )}
 
-        {/* ══════════════════════════════════════════════════
-            LAYER 3 — THE FUNDS
-            Live fund prices, charts, holdings.
-        ══════════════════════════════════════════════════ */}
-        <section>
-          <SectionHeading
-            label={`${activeSectorConfig.name} Funds`}
-            sub={`${sectorFunds.length} fund${sectorFunds.length !== 1 ? "s" : ""} · live NAV & holdings`}
-          />
-
-          {loading && !data ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ) : sectorFunds.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {sectorFunds.map((fd) => <FundCard key={fd.fund.id} data={fd} />)}
-            </div>
-          ) : !loading && (
-            <div
-              className="rounded-2xl border flex items-center justify-center py-20 text-sm"
-              style={{ borderColor: "var(--border)", color: "var(--text-3)" }}
+            {/* Footer */}
+            <footer
+              className="pt-2 pb-6 flex flex-wrap items-center justify-between gap-2 text-[10px]"
+              style={{ color: "var(--text-3)", borderTop: "1px solid var(--border)" }}
             >
-              No funds configured for the {activeSectorConfig.name} sector
-            </div>
-          )}
-        </section>
+              <span>Data · Yahoo Finance · BlackRock iShares · AI · Claude Sonnet</span>
+              <span>Auto-refreshes every 15 min</span>
+            </footer>
+          </main>
 
-        {/* ── Full holdings detail (drill-down) ──────────── */}
-        {data && sectorFunds.length > 0 && sectorFunds.some((f) => f.holdings.length > 0) && (
-          <section>
-            <SectionHeading
-              label="Holdings Detail"
-              sub="All positions · live prices · fund weights"
+          {/* ── Right: sticky news sidebar ────────────────── */}
+          <aside
+            className="hidden xl:block xl:sticky xl:top-[105px] space-y-3"
+            style={{ maxHeight: "calc(100vh - 116px)", overflowY: "auto" }}
+          >
+            <CompactNewsPanel
+              title="Broad Market"
+              accentColor="#3b82f6"
+              items={news.market}
             />
-            <HoldingsTable funds={sectorFunds} />
-          </section>
-        )}
+            <CompactNewsPanel
+              title={`${activeSectorConfig.name} Sector`}
+              accentColor={activeSectorConfig.color}
+              items={news.sector}
+            />
+            <CompactNewsPanel
+              title="Portfolio Companies"
+              accentColor="#818cf8"
+              items={news.portfolio}
+            />
+          </aside>
 
-        {/* Footer */}
-        <footer
-          className="pt-2 pb-6 flex flex-wrap items-center justify-between gap-2 text-[10px]"
-          style={{ color: "var(--text-3)", borderTop: "1px solid var(--border)" }}
-        >
-          <span>Data · Yahoo Finance · BlackRock iShares · AI · Claude Sonnet</span>
-          <span>Auto-refreshes every 15 min</span>
-        </footer>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

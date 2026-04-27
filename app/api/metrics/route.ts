@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchQuotes, fetchHistory, YFHistoricalPoint } from "@/lib/yahoo";
+import { fetchQuotes, fetchHistory, fetchGICSIndustries, YFHistoricalPoint } from "@/lib/yahoo";
 import { MetricAsset, SubSectorPerf, Sector } from "@/lib/types";
 import { SECTORS } from "@/lib/constants";
 
-// Assets shown in the performance table.
-// Yahoo Finance tickers: forex = "XXX=X", BTC = "BTC-USD", futures = "XX=F"
 const METRIC_CONFIGS = [
   { id: "acwi",  ticker: "ACWI",     name: "MSCI ACWI",   label: "iShares MSCI ACWI ETF",      currency: "USD" },
   { id: "spy",   ticker: "SPY",      name: "S&P 500",      label: "SPDR S&P 500 ETF",           currency: "USD" },
@@ -15,6 +13,41 @@ const METRIC_CONFIGS = [
   { id: "oil",   ticker: "CL=F",     name: "WTI Crude",    label: "WTI Crude Futures",          currency: "USD" },
   { id: "dxy",   ticker: "DX-Y.NYB", name: "US Dollar",    label: "ICE US Dollar Index",        currency: "USD" },
 ];
+
+// Top-5 industries to surface per sector when using GICS data.
+// These match GICS classifications used by Yahoo Finance's sectors API.
+const GICS_INDUSTRY_FILTER: Record<Sector, string[]> = {
+  technology: [
+    "Semiconductors",
+    "Software—Application",
+    "Software—Infrastructure",
+    "Information Technology Services",
+    "Computer Hardware",
+    "Electronic Components",
+    "Communication Equipment",
+    "Internet Content & Information",
+  ],
+  healthcare: [
+    "Biotechnology",
+    "Drug Manufacturers—General",
+    "Drug Manufacturers—Specialty & Generic",
+    "Medical Devices",
+    "Healthcare Plans",
+    "Medical Instruments & Supplies",
+    "Diagnostics & Research",
+    "Health Information Services",
+  ],
+  financials: [
+    "Banks—Diversified",
+    "Banks—Regional",
+    "Capital Markets",
+    "Credit Services",
+    "Insurance—Diversified",
+    "Insurance—Life",
+    "Insurance—Property & Casualty",
+    "Financial Data & Stock Exchanges",
+  ],
+};
 
 function firstPriceAtOrAfter(
   history: YFHistoricalPoint[],
@@ -39,16 +72,21 @@ export async function GET() {
     const subSectorTickers = SECTORS.flatMap((s) => s.subSectors.map((ss) => ss.ticker));
     const allTickers       = [...new Set([...metricTickers, ...subSectorTickers])];
 
-    // Single batch quote call for everything + YTD history only for main metrics
+    // Fetch quotes + YTD history + GICS data in parallel
     const [quotesResult, ...histResults] = await Promise.allSettled([
       fetchQuotes(allTickers),
       ...metricTickers.map((t) => fetchHistory(t, "ytd")),
     ]);
 
+    // GICS industry data per sector (all three in parallel)
+    const gicsResults = await Promise.allSettled(
+      SECTORS.map((s) => fetchGICSIndustries(s.id))
+    );
+
     const quotes =
       quotesResult.status === "fulfilled" ? quotesResult.value : new Map();
 
-    // ── Main metric assets (with MTD/YTD from history) ──────────────────
+    // ── Main metric assets ──────────────────────────────────────────────────
     const metrics: MetricAsset[] = METRIC_CONFIGS.map((cfg, i) => {
       const q       = quotes.get(cfg.ticker);
       const history = histResults[i]?.status === "fulfilled"
@@ -75,20 +113,46 @@ export async function GET() {
       };
     });
 
-    // ── GICS sub-sector performance (Day % only — no history needed) ────
+    // ── GICS sub-sector performance ─────────────────────────────────────────
     const subSectors: Partial<Record<Sector, SubSectorPerf[]>> = {};
-    for (const sector of SECTORS) {
-      subSectors[sector.id] = sector.subSectors.map((ss) => {
-        const q = quotes.get(ss.ticker);
-        return {
-          name:          ss.name,
-          ticker:        ss.ticker,
-          etfLabel:      ss.etfLabel,
-          price:         q?.regularMarketPrice         ?? 0,
-          change:        q?.regularMarketChange        ?? 0,
-          changePercent: q?.regularMarketChangePercent ?? 0,
-        };
-      });
+
+    for (let idx = 0; idx < SECTORS.length; idx++) {
+      const sector    = SECTORS[idx];
+      const gicsData  = gicsResults[idx]?.status === "fulfilled"
+        ? (gicsResults[idx] as PromiseFulfilledResult<{ name: string; changePercent: number }[]>).value
+        : [];
+
+      const preferredNames = GICS_INDUSTRY_FILTER[sector.id] ?? [];
+
+      if (gicsData.length > 0) {
+        // Sort so that preferred industries appear first, then any extras
+        const sorted = [
+          ...preferredNames
+            .map((pref) => gicsData.find((g) => g.name === pref))
+            .filter((g): g is { name: string; changePercent: number } => g !== undefined),
+          ...gicsData.filter((g) => !preferredNames.includes(g.name)),
+        ];
+
+        subSectors[sector.id] = sorted.slice(0, 5).map((g) => ({
+          name:          g.name,
+          changePercent: g.changePercent,
+          source:        "gics" as const,
+        }));
+      } else {
+        // Fallback: ETF proxy quotes
+        subSectors[sector.id] = sector.subSectors.map((ss) => {
+          const q = quotes.get(ss.ticker);
+          return {
+            name:          ss.name,
+            ticker:        ss.ticker,
+            etfLabel:      ss.etfLabel,
+            price:         q?.regularMarketPrice         ?? 0,
+            change:        q?.regularMarketChange        ?? 0,
+            changePercent: q?.regularMarketChangePercent ?? 0,
+            source:        "etf" as const,
+          };
+        });
+      }
     }
 
     return NextResponse.json({ metrics, subSectors, lastUpdated: new Date().toISOString() });

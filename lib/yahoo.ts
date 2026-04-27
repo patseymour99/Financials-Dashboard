@@ -291,6 +291,69 @@ export async function fetchETFHoldings(etfTicker: string): Promise<YFHolding[]> 
   }
 }
 
+// ── GICS Industry Performance ─────────────────────────────────────────────
+
+const GICS_SECTOR_KEYS: Record<string, string> = {
+  technology: "technology",
+  healthcare: "healthcare",
+  financials: "financial-services",
+};
+
+export interface GICSIndustry {
+  name: string;
+  changePercent: number;
+}
+
+/**
+ * Fetch GICS industry performance for a given sector from Yahoo Finance's
+ * sectors API.  Returns [] on failure — caller should fall back to ETF proxies.
+ */
+export async function fetchGICSIndustries(sectorId: string): Promise<GICSIndustry[]> {
+  const sectorKey = GICS_SECTOR_KEYS[sectorId];
+  if (!sectorKey) return [];
+
+  const auth = await getCrumb();
+  const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : "";
+
+  const url =
+    `${Q1}/v1/finance/sectors/${sectorKey}` +
+    `?formatted=false&lang=en-US&region=US${crumbParam}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: authHeaders(auth?.cookies),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`GICS sectors API HTTP ${res.status}`);
+    const json = await res.json();
+
+    // Support multiple possible response shapes
+    const result =
+      json?.sectorPerformance?.result ??
+      json?.quoteSummary?.result?.[0] ??
+      json?.finance?.result;
+
+    const industries: unknown[] =
+      (Array.isArray(result) ? result[0] : result)?.industries ?? [];
+
+    return industries
+      .filter(
+        (i): i is Record<string, unknown> =>
+          typeof i === "object" && i !== null && "industry" in i
+      )
+      .map((i) => ({
+        name: String(i.industry ?? i.industryName ?? ""),
+        changePercent: parseFloat(
+          String(i.changesPercentage ?? i.changePercent ?? "0").replace("%", "")
+        ),
+      }))
+      .filter((i) => i.name && !isNaN(i.changePercent));
+  } catch (err) {
+    console.warn(`fetchGICSIndustries(${sectorId}) failed:`, err);
+    return [];
+  }
+}
+
 // ── News (RSS — no auth required) ─────────────────────────────────────────
 
 const RSS_BASE = "https://feeds.finance.yahoo.com/rss/2.0/headline";
@@ -355,6 +418,30 @@ export async function fetchRSSNews(
     return parseRSS(await res.text(), count);
   } catch (err) {
     console.error(`fetchRSSNews(${ticker}) error:`, err);
+    return [];
+  }
+}
+
+/**
+ * Fetch news from any public RSS URL (Reuters, CNBC, MarketWatch, etc.).
+ * Falls back to [] gracefully so callers can try alternative sources.
+ */
+export async function fetchExternalRSS(
+  url: string,
+  count = 8,
+  defaultPublisher = ""
+): Promise<YFNewsItem[]> {
+  try {
+    const res = await fetch(url, { headers: RSS_HEADERS, cache: "no-store" });
+    if (!res.ok) throw new Error(`External RSS ${res.status} (${url})`);
+    const items = parseRSS(await res.text(), count);
+    if (!defaultPublisher) return items;
+    return items.map((item) => ({
+      ...item,
+      publisher: item.publisher || defaultPublisher,
+    }));
+  } catch (err) {
+    console.warn(`fetchExternalRSS(${url}) error:`, err);
     return [];
   }
 }

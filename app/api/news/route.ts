@@ -1,33 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchRSSNews, YFNewsItem } from "@/lib/yahoo";
+import { fetchRSSNews, fetchExternalRSS, YFNewsItem } from "@/lib/yahoo";
 import { NewsItem, Sector } from "@/lib/types";
 
-// Sector ETF tickers used as RSS news proxies for each sector.
-// XLF / XLK / XLV are the SPDR sector ETFs — their RSS feeds surface
-// sector-specific stories without any auth.
-const SECTOR_ETF: Record<Sector, string[]> = {
-  financials: ["XLF", "KBE"],       // Financials + Banks
-  technology: ["XLK", "SOXX"],      // Tech + Semiconductors
-  healthcare: ["XLV", "IBB"],       // Healthcare + Biotech
+// ── High-quality external RSS feeds ───────────────────────────────────────
+// CNBC and Reuters give professional, curated financial journalism.
+
+const CNBC_MARKET   = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114";
+const CNBC_TECH     = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910";
+const CNBC_FINANCE  = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664";
+const CNBC_HEALTH   = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000108";
+const MW_TOP        = "https://feeds.marketwatch.com/marketwatch/topstories/";
+const MW_PULSE      = "https://feeds.marketwatch.com/marketwatch/marketpulse/";
+const REUTERS_BIZ   = "https://feeds.reuters.com/reuters/businessNews";
+const REUTERS_TECH  = "https://feeds.reuters.com/reuters/technologyNews";
+
+// Per-sector external feeds: try each in order, merge results
+const SECTOR_EXTERNAL: Record<Sector, Array<{ url: string; pub: string }>> = {
+  technology: [
+    { url: CNBC_TECH,    pub: "CNBC" },
+    { url: REUTERS_TECH, pub: "Reuters" },
+  ],
+  healthcare: [
+    { url: CNBC_HEALTH,  pub: "CNBC" },
+    { url: REUTERS_BIZ,  pub: "Reuters" }, // Reuters no specific health feed
+  ],
+  financials: [
+    { url: CNBC_FINANCE, pub: "CNBC" },
+    { url: REUTERS_BIZ,  pub: "Reuters" },
+  ],
 };
 
-// Per-sector holding tickers for the Portfolio Companies panel.
-// These should match the top holdings across both funds in each sector.
+const MARKET_EXTERNAL = [
+  { url: CNBC_MARKET, pub: "CNBC" },
+  { url: MW_PULSE,    pub: "MarketWatch" },
+  { url: MW_TOP,      pub: "MarketWatch" },
+  { url: REUTERS_BIZ, pub: "Reuters" },
+];
+
+// Individual holding tickers for the Portfolio Companies panel.
+// Yahoo Finance RSS for individual stocks surfaces real company news
+// (earnings, analyst moves, product launches) — much more relevant
+// than ETF-level RSS feeds.
 const PORTFOLIO_TICKERS: Record<Sector, string[]> = {
-  financials: ["JPM", "V", "MA", "PYPL", "GS", "BAC", "MS", "AXP"],
-  technology: ["NVDA", "MSFT", "META", "GOOGL", "AMZN", "AMD", "AVGO", "PLTR"],
-  healthcare: ["LLY", "ISRG", "REGN", "MRNA", "DXCM", "NVO", "UNH", "ABBV"],
+  technology: ["NVDA", "MSFT", "META", "GOOGL", "AMZN", "AVGO", "AAPL"],
+  healthcare: ["LLY", "NVO", "UNH", "ABBV", "ISRG", "JNJ", "REGN"],
+  financials: ["JPM", "V", "MA", "GS", "BAC", "MS", "AXP"],
 };
-
-// Broad-market tickers: S&P 500 + Nasdaq + global markets ETF
-const MARKET_TICKERS = ["SPY", "QQQ", "VT"];
 
 function mapItem(item: YFNewsItem): NewsItem {
   return {
-    uuid: item.uuid,
-    title: item.title,
-    link: item.link,
-    publisher: item.publisher,
+    uuid:        item.uuid,
+    title:       item.title,
+    link:        item.link,
+    publisher:   item.publisher,
     publishedAt: item.providerPublishTime
       ? new Date(item.providerPublishTime * 1000).toISOString()
       : new Date().toISOString(),
@@ -46,44 +71,51 @@ function dedupe(items: NewsItem[], seen: Set<string>): NewsItem[] {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
-    const sector = (searchParams.get("sector") as Sector | null) ?? "financials";
+    const sector = (searchParams.get("sector") as Sector | null) ?? "technology";
 
-    const sectorEtfs   = SECTOR_ETF[sector]       ?? SECTOR_ETF.financials;
-    const portfolioTkr = PORTFOLIO_TICKERS[sector] ?? PORTFOLIO_TICKERS.financials;
+    const sectorFeeds   = SECTOR_EXTERNAL[sector]       ?? SECTOR_EXTERNAL.technology;
+    const portfolioTkrs = PORTFOLIO_TICKERS[sector]     ?? PORTFOLIO_TICKERS.technology;
 
-    // Fetch all RSS feeds in parallel
-    const allTickers = [...MARKET_TICKERS, ...sectorEtfs, ...portfolioTkr];
-    const results = await Promise.allSettled(
-      allTickers.map((t) => fetchRSSNews(t, 6))
-    );
+    // Fetch everything in parallel: external RSS + Yahoo Finance individual stocks
+    const externalFetches = [
+      ...MARKET_EXTERNAL.map((f) => fetchExternalRSS(f.url, 8, f.pub)),
+      ...sectorFeeds.map((f)   => fetchExternalRSS(f.url, 8, f.pub)),
+    ];
+    const yahooFetches = portfolioTkrs.map((t) => fetchRSSNews(t, 5));
 
-    const byTicker = new Map<string, YFNewsItem[]>();
-    allTickers.forEach((t, i) => {
-      byTicker.set(
-        t,
-        results[i].status === "fulfilled"
-          ? (results[i] as PromiseFulfilledResult<YFNewsItem[]>).value
-          : []
-      );
+    const [extResults, yahooResults] = await Promise.all([
+      Promise.allSettled(externalFetches),
+      Promise.allSettled(yahooFetches),
+    ]);
+
+    // Resolve market external feeds
+    const marketItems: YFNewsItem[] = [];
+    MARKET_EXTERNAL.forEach((_, i) => {
+      if (extResults[i]?.status === "fulfilled") {
+        marketItems.push(...(extResults[i] as PromiseFulfilledResult<YFNewsItem[]>).value);
+      }
     });
 
-    // Use a shared seen-set so no story appears in more than one panel
+    // Resolve sector external feeds
+    const sectorItems: YFNewsItem[] = [];
+    sectorFeeds.forEach((_, i) => {
+      const idx = MARKET_EXTERNAL.length + i;
+      if (extResults[idx]?.status === "fulfilled") {
+        sectorItems.push(...(extResults[idx] as PromiseFulfilledResult<YFNewsItem[]>).value);
+      }
+    });
+
+    // Resolve portfolio Yahoo Finance feeds
+    const portfolioItems: YFNewsItem[] = [];
+    yahooResults.forEach((r) => {
+      if (r.status === "fulfilled") portfolioItems.push(...r.value);
+    });
+
     const globalSeen = new Set<string>();
 
-    const market = dedupe(
-      MARKET_TICKERS.flatMap((t) => byTicker.get(t)!.map(mapItem)),
-      globalSeen
-    ).slice(0, 12);
-
-    const sectorNews = dedupe(
-      sectorEtfs.flatMap((t) => byTicker.get(t)!.map(mapItem)),
-      globalSeen
-    ).slice(0, 12);
-
-    const portfolio = dedupe(
-      portfolioTkr.flatMap((t) => byTicker.get(t)!.map(mapItem)),
-      globalSeen
-    ).slice(0, 16);
+    const market = dedupe(marketItems.map(mapItem), globalSeen).slice(0, 12);
+    const sectorNews = dedupe(sectorItems.map(mapItem), globalSeen).slice(0, 12);
+    const portfolio  = dedupe(portfolioItems.map(mapItem), globalSeen).slice(0, 16);
 
     return NextResponse.json({
       market,

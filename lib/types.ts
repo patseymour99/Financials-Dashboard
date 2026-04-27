@@ -11,11 +11,14 @@ export interface SubSectorConfig {
 
 export interface SubSectorPerf {
   name: string;
-  ticker: string;
-  etfLabel: string;
-  price: number;
-  change: number;
   changePercent: number;
+  /** "gics" = live Yahoo Finance GICS industry data; "etf" = ETF proxy fallback */
+  source: "gics" | "etf";
+  // ETF-proxy-only fields (present when source === "etf")
+  ticker?: string;
+  etfLabel?: string;
+  price?: number;
+  change?: number;
 }
 
 export interface SectorConfig {
